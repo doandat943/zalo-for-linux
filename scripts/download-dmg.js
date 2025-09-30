@@ -48,17 +48,11 @@ async function getLatestZaloVersion() {
 
 async function getCurrentZaloVersion() {
   return new Promise((resolve) => {
-    if (!process.env.GITHUB_TOKEN || !process.env.GITHUB_REPOSITORY) {
-      resolve('');
-      return;
-    }
-    
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
     const options = {
       hostname: 'api.github.com',
       path: `/repos/${owner}/${repo}/releases/latest`,
       headers: {
-        'Authorization': `token ${process.env.GITHUB_TOKEN}`,
         'User-Agent': 'Node.js'
       }
     };
