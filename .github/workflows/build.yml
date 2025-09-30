@@ -29,10 +29,6 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Update ZaDark submodule
-      run: |
-        git submodule update --remote plugins/zadark
-
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
