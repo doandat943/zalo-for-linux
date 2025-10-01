@@ -44,15 +44,33 @@ async function ensureZaDarkSource() {
 }
 
 async function updateSource() {
-  console.log('🔄 Updating ZaDark submodule to latest...');
+  console.log('🔄 Updating ZaDark submodule to latest tag...');
   try {
-    execSync('git submodule update --remote', {
-      cwd: path.dirname(ZADARK_DIR),
+    // Fetch latest tags
+    execSync('git fetch --tags', {
+      cwd: ZADARK_DIR,
       stdio: 'inherit'
     });
-    console.log('✅ ZaDark submodule updated to latest');
+    
+    // Get latest tag
+    const latestTag = execSync('git tag --sort=-version:refname | head -1', {
+      cwd: ZADARK_DIR,
+      encoding: 'utf8'
+    }).trim();
+    
+    if (latestTag) {
+      // Checkout latest tag
+      execSync(`git checkout ${latestTag}`, {
+        cwd: ZADARK_DIR,
+        stdio: 'inherit'
+      });
+      console.log(`✅ ZaDark submodule updated to latest tag: ${latestTag}`);
+    } else {
+      console.warn('⚠️ No tags found, using current version');
+    }
   } catch (error) {
-    console.warn('⚠️ Could not update ZaDark submodule, using current version');
+    console.warn('⚠️ Could not update ZaDark submodule to latest tag, using current version');
+    console.warn(`Error: ${error.message}`);
   }
 }
 
