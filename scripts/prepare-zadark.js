@@ -1,26 +1,24 @@
-#!/usr/bin/env node
-
-/**
- * Prepare ZaDark - Clone and build ZaDark assets
- * This script prepares ZaDark for later integration during build
- */
-
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
 const ZADARK_DIR = path.join(__dirname, '..', 'plugins', 'zadark');
 
-// Get ZaDark version from environment variable
-const ZADARK_VERSION = process.env.ZADARK_VERSION;
-
 console.log('🎨 Preparing ZaDark...');
+
+// Run preparation
+prepareZaDark();
 
 async function prepareZaDark() {
   try {
+    // Check if we should skip - no ZADARK_VERSION means we should skip
+    if (!process.env.ZADARK_VERSION) {
+      console.log('ℹ️  ZaDark preparation skipped (no ZADARK_VERSION provided)');
+      return;
+    }
+    
     await ensureZaDarkSource();
-    await updateSource();
-    if (process.env.CI === 'true' && ZADARK_VERSION) await checkoutZaDarkVersion();
+    await checkoutToTargetVersion();
     await addRequiredExports();
     await buildZaDarkAssets();
 
@@ -43,90 +41,37 @@ async function ensureZaDarkSource() {
   }
 }
 
-async function updateSource() {
-  console.log('🔄 Updating ZaDark submodule to latest tag...');
-  try {
-    // Fetch latest tags
-    execSync('git fetch --tags', {
-      cwd: ZADARK_DIR,
-      stdio: 'inherit'
-    });
-    
-    // Get latest tag
-    const latestTag = execSync('git tag --sort=-version:refname | head -1', {
-      cwd: ZADARK_DIR,
-      encoding: 'utf8'
-    }).trim();
-    
-    if (latestTag) {
-      // Checkout latest tag
-      execSync(`git checkout ${latestTag}`, {
+async function checkoutToTargetVersion() {
+  const targetVersion = process.env.ZADARK_VERSION;
+  
+  if (targetVersion) {
+    console.log(`🎯 Checking out ZaDark version: ${targetVersion}`);
+    try {
+      // Fetch to ensure we have the target version
+      execSync('git fetch --tags', {
         cwd: ZADARK_DIR,
         stdio: 'inherit'
       });
-      console.log(`✅ ZaDark submodule updated to latest tag: ${latestTag}`);
-    } else {
-      console.warn('⚠️ No tags found, using current version');
+
+      // Check if it's a valid git reference
+      execSync(`git rev-parse --verify "${targetVersion}"`, {
+        cwd: ZADARK_DIR,
+        stdio: 'pipe'
+      });
+
+      // Checkout the version
+      execSync(`git checkout ${targetVersion}`, {
+        cwd: ZADARK_DIR,
+        stdio: 'inherit'
+      });
+
+      console.log(`✅ Checked out ZaDark version: ${targetVersion}`);
+    } catch (error) {
+      console.warn(`⚠️  Could not checkout ZaDark version ${targetVersion}, using current version`);
+      console.warn(`Error: ${error.message}`);
     }
-  } catch (error) {
-    console.warn('⚠️ Could not update ZaDark submodule to latest tag, using current version');
-    console.warn(`Error: ${error.message}`);
-  }
-}
-
-async function checkoutZaDarkVersion() {
-  console.log(`🎯 CI mode: Checking out ZaDark version: ${ZADARK_VERSION}`);
-
-  try {
-    // Check if it's a valid git reference
-    execSync(`git rev-parse --verify "${ZADARK_VERSION}"`, {
-      cwd: ZADARK_DIR,
-      stdio: 'pipe'
-    });
-
-    // Checkout the version
-    execSync(`git checkout ${ZADARK_VERSION}`, {
-      cwd: ZADARK_DIR,
-      stdio: 'inherit'
-    });
-
-    console.log(`✅ Checked out ZaDark version: ${ZADARK_VERSION}`);
-  } catch (error) {
-    console.warn(`⚠️  Could not checkout ZaDark version ${ZADARK_VERSION}, using current version`);
-    console.warn(`Error: ${error.message}`);
-  }
-}
-
-async function buildZaDarkAssets() {
-  const assetsDir = path.join(ZADARK_DIR, 'build', 'pc', 'assets');
-  const shouldBuildAssets = !fs.existsSync(assetsDir);
-
-  if (!shouldBuildAssets) {
-    console.log('✅ ZaDark PC assets already built and up to date');
-    return;
-  }
-
-  console.log('🔨 Building ZaDark PC assets...');
-
-  try {
-    // Install dependencies
-    console.log('📦 Installing ZaDark dependencies...');
-    execSync('npm install --silent', {
-      cwd: ZADARK_DIR,
-      stdio: 'pipe'
-    });
-
-    // Build PC version
-    console.log('⚙️  Building PC assets...');
-    execSync('npm run build', {
-      cwd: ZADARK_DIR,
-      stdio: 'pipe'
-    });
-
-    console.log('✅ ZaDark PC assets built successfully');
-  } catch (error) {
-    console.error('❌ Failed to build ZaDark:', error.message);
-    process.exit(1);
+  } else {
+    console.log('🔄 Using current ZaDark version (determined by check-versions)');
   }
 }
 
@@ -176,5 +121,35 @@ async function addRequiredExports() {
   console.log('✅ Added exports to ZaDark module');
 }
 
-// Run preparation
-prepareZaDark();
+async function buildZaDarkAssets() {
+  const assetsDir = path.join(ZADARK_DIR, 'build', 'pc', 'assets');
+  const shouldBuildAssets = !fs.existsSync(assetsDir);
+
+  if (!shouldBuildAssets) {
+    console.log('✅ ZaDark PC assets already built and up to date');
+    return;
+  }
+
+  console.log('🔨 Building ZaDark PC assets...');
+
+  try {
+    // Install dependencies
+    console.log('📦 Installing ZaDark dependencies...');
+    execSync('npm install --silent', {
+      cwd: ZADARK_DIR,
+      stdio: 'pipe'
+    });
+
+    // Build PC version
+    console.log('⚙️  Building PC assets...');
+    execSync('npm run build', {
+      cwd: ZADARK_DIR,
+      stdio: 'pipe'
+    });
+
+    console.log('✅ ZaDark PC assets built successfully');
+  } catch (error) {
+    console.error('❌ Failed to build ZaDark:', error.message);
+    process.exit(1);
+  }
+}
