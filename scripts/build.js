@@ -4,6 +4,12 @@ const path = require('path');
 
 console.log('🚀 Building Zalo for Linux...');
 
+// Check if we should skip build
+if (process.env.SKIP_BUILD === 'true') {
+  console.log('ℹ️  Build skipped - combination already exists');
+  process.exit(0);
+}
+
 const BASE_DIR = path.join(__dirname, '..');
 const APP_DIR = path.join(BASE_DIR, 'app');
 

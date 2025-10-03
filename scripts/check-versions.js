@@ -23,31 +23,36 @@ async function main() {
       console.log('🤖 GitHub Actions detected - checking existing combinations');
       
       // Check existing combinations in releases
-      const existingCombinations = await getExistingCombinations();
-      console.log(`📦 Found ${existingCombinations.length} existing combinations`);
+      const existingCombo = await getExistingCombinations();
+      console.log(`📦 Found ${existingCombo.length} existing combinations`);
 
-      // Determine what needs to be done
-      const workflow = determineWorkflow(
-        targetZaloVersion,
-        targetZaDarkVersion,
-        existingCombinations
-      );
+      // Check if combination already exists
+      const targetCombo = `${targetZaloVersion}+${targetZaDarkVersion}`;
+      const isExist = existingCombo.includes(targetCombo);
 
-      console.log(`🎯 Workflow decision: ${workflow.action}`);
-      console.log(`📝 Reason: ${workflow.reason}`);
+      if (isExist) {
+        console.log(`🎯 Workflow decision: skip`);
+        process.env.SKIP_BUILD = 'true';
+      } else {
+        console.log(`🎯 Workflow decision: build`);
+        delete process.env.SKIP_BUILD;
+      }
 
-      // Set environment variables for other scripts
-      setEnvironmentVariables(workflow, targetZaloVersion, targetZaDarkVersion);
+      // Always set versions
+      process.env.ZALO_VERSION = targetZaloVersion;
+      process.env.ZADARK_VERSION = targetZaDarkVersion;
     } else {
       console.log('🏠 Local development - building everything');
       
       // In local environment, always build with detected/provided versions
+      delete process.env.SKIP_BUILD;
       process.env.ZALO_VERSION = targetZaloVersion;
       process.env.ZADARK_VERSION = targetZaDarkVersion;
     }
 
     // Output for CI/scripts
     console.log('\n📋 Environment variables set:');
+    console.log(`SKIP_BUILD=${process.env.SKIP_BUILD || 'false'}`);
     console.log(`ZALO_VERSION=${process.env.ZALO_VERSION || 'none'}`);
     console.log(`ZADARK_VERSION=${process.env.ZADARK_VERSION || 'none'}`);
 
@@ -158,39 +163,4 @@ async function getExistingCombinations() {
     });
     req.end();
   });
-}
-
-function determineWorkflow(zaloVersion, zadarkVersion, existingCombinations) {
-  const targetCombo = `${zaloVersion}+${zadarkVersion}`;
-
-  // Check if exact combination already exists
-  if (existingCombinations.includes(targetCombo)) {
-    return {
-      action: 'skip',
-      reason: `Combination ${targetCombo} already exists`
-    };
-  }
-
-  // If combination doesn't exist, we always need to build
-  // And building always requires DMG file
-  return {
-    action: 'download-and-build',
-    reason: `New combination ${targetCombo}, need DMG and build`
-  };
-}
-
-function setEnvironmentVariables(workflow, zaloVersion, zadarkVersion) {
-  switch (workflow.action) {
-    case 'skip':
-      // Don't set version variables, scripts will skip automatically
-      delete process.env.ZALO_VERSION;
-      delete process.env.ZADARK_VERSION;
-      break;
-
-    case 'download-and-build':
-      // Set versions for scripts to use
-      process.env.ZALO_VERSION = zaloVersion;
-      process.env.ZADARK_VERSION = zadarkVersion;
-      break;
-  }
 }

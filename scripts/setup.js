@@ -10,6 +10,13 @@ try {
     env: process.env
   });
 
+  // Check if we should skip build
+  if (process.env.SKIP_BUILD === 'true') {
+    console.log('\n⏭️  Build skipped - combination already exists');
+    console.log('✅ No build needed!');
+    process.exit(0);
+  }
+
   // Step 2: Download DMG (script will skip if not needed)
   console.log('\n📥 Step 2: Downloading Zalo DMG...');
   execSync('node scripts/download-dmg.js', {
