@@ -23,7 +23,7 @@ async function main() {
     // Only check combinations in GitHub Actions
     if (process.env.GITHUB_ACTIONS) {
       console.log('🤖 GitHub Actions detected - checking existing combinations');
-      
+
       // Check existing combinations in releases
       const existingCombo = await getExistingCombinations();
       console.log(`📦 Found ${existingCombo.length} existing combinations`);
@@ -45,7 +45,7 @@ async function main() {
       process.env.ZADARK_VERSION = targetZaDarkVersion;
     } else {
       console.log('🏠 Local development - building everything');
-      
+
       // In local environment, always build with detected/provided versions
       delete process.env.SKIP_BUILD;
       process.env.ZALO_VERSION = targetZaloVersion;
@@ -103,14 +103,19 @@ async function getLatestZaDarkVersion() {
       execSync('git submodule update --init --recursive --remote', {
         stdio: 'pipe'
       });
-      
+
+      execSync('git fetch --tags', {
+        cwd: ZADARK_DIR,
+        stdio: 'pipe'
+      });
+
       // Get latest tag from submodule
       const latestTag = execSync('git tag --sort=-version:refname | head -1', {
         cwd: ZADARK_DIR,
         encoding: 'utf8',
         stdio: 'pipe'
       }).trim();
-      
+
       if (latestTag) {
         resolve(latestTag);
       } else {
