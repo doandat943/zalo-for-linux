@@ -14,7 +14,7 @@ Thanks **realdtn2** for the solution: [realdtn2/zalo-linux-unofficial-2024](http
 - **No Photos/Videos, Files and Links on the Conversation Info panel** for some reason (you can still viewing image/video, file or link like normal, it just don't appear on the conversation info panel like this)
 - Crash when click **Screenshot without Zalo window button**
 - **✅ Fixed: No title bar with minimize/maximize/close buttons** - Thanks to [@NanKillBro](https://github.com/NanKillBro) for the solution. For more details, see [issue #4](https://github.com/doandat943/zalo-for-linux/issues/4)
-- **No tray menu icon**: Fix soon
+- **✅ Fixed: No tray menu icon**
 
 This project is best suited for users who need a native-feeling Zalo client on Linux and are comfortable with the technical workarounds required for full functionality.
 
