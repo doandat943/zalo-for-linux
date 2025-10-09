@@ -5,7 +5,10 @@ const { execSync } = require('child_process');
 const TEMP_DIR = path.join(__dirname, '..', 'temp');
 const APP_DIR = path.join(__dirname, '..', 'app');
 
-main();
+// Run extraction if this file is executed directly
+if (require.main === module) {
+  main();
+}
 
 // Run extraction
 async function main() {
@@ -337,3 +340,5 @@ async function showInteractiveMenu(files) {
     });
   });
 }
+
+module.exports = { main };

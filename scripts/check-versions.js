@@ -6,8 +6,10 @@ const ZADARK_DIR = path.join(__dirname, '..', 'plugins', 'zadark');
 
 console.log('🔍 Checking versions and determining build workflow...');
 
-// Run main function
-main();
+// Run main function if this file is executed directly
+if (require.main === module) {
+  main();
+}
 
 async function main() {
   try {
@@ -164,3 +166,5 @@ async function getExistingCombinations() {
     req.end();
   });
 }
+
+module.exports = { main };

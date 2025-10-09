@@ -6,10 +6,12 @@ const ZADARK_DIR = path.join(__dirname, '..', 'plugins', 'zadark');
 
 console.log('🎨 Preparing ZaDark...');
 
-// Run preparation
-prepareZaDark();
+// Run preparation if this file is executed directly
+if (require.main === module) {
+  main();
+}
 
-async function prepareZaDark() {
+async function main() {
   try {
     // Check if we should skip - no ZADARK_VERSION means we should skip
     if (!process.env.ZADARK_VERSION) {
@@ -153,3 +155,5 @@ async function buildZaDarkAssets() {
     process.exit(1);
   }
 }
+
+module.exports = { main };

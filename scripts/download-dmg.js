@@ -11,10 +11,13 @@ console.log('📥 Starting Zalo DMG download process...');
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
-// Run download
-downloadDMG();
 
-async function downloadDMG() {
+// Run download if this file is executed directly
+if (require.main === module) {
+  main();
+}
+
+async function main() {
   try {
     // Check if we should skip - no ZALO_VERSION means we should skip
     if (!process.env.ZALO_VERSION) {
@@ -106,3 +109,5 @@ async function downloadFile(url, destination) {
     throw new Error(`Download failed: ${error.message}`);
   }
 }
+
+module.exports = { main };
