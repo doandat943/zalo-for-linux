@@ -44,8 +44,8 @@ async function ZaDarkIntegration() {
 
 async function buildZalo(buildName = '', outputSuffix = '') {
   try {
-    // Get build date for filename
-    const buildDate = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+    // Get git commit hash for filename
+    const commitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
 
     // Set artifact name and build command based on build type
     let artifactName;
@@ -65,13 +65,13 @@ async function buildZalo(buildName = '', outputSuffix = '') {
         }
       }
 
-      artifactName = `Zalo-${ZALO_VERSION}+ZaDark-${zadarkVersion}-${buildDate}.AppImage`;
+      artifactName = `Zalo-${ZALO_VERSION}+ZaDark-${zadarkVersion}-${commitHash}.AppImage`;
       buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
-      console.log(`🔨 Building${buildName ? ` ${buildName}` : ''} with Zalo: ${ZALO_VERSION}, ZaDark: ${zadarkVersion}, Date: ${buildDate}`);
+      console.log(`🔨 Building${buildName ? ` ${buildName}` : ''} with Zalo: ${ZALO_VERSION}, ZaDark: ${zadarkVersion}, Commit: ${commitHash}`);
     } else {
-      artifactName = `Zalo-${ZALO_VERSION}-${buildDate}.AppImage`;
+      artifactName = `Zalo-${ZALO_VERSION}-${commitHash}.AppImage`;
       buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
-      console.log(`🔨 Building${buildName ? ` ${buildName}` : ''} with Zalo: ${ZALO_VERSION}, Date: ${buildDate}`);
+      console.log(`🔨 Building${buildName ? ` ${buildName}` : ''} with Zalo: ${ZALO_VERSION}, Commit: ${commitHash}`);
     }
     console.log(`📝 Command: ${buildCommand}`);
 
