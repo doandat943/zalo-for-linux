@@ -45,19 +45,35 @@ app.on('browser-window-created', (_evt, win) => {
 app.once('ready', () => {
   try { Menu.setApplicationMenu(null); } catch (_) {}
 
-  // Create tray icon
-  const iconPath = path.join(__dirname, 'app', 'pc-dist', 'favicon-512x512.png');
-  if (fs.existsSync(iconPath)) {
-    tray = new Tray(iconPath);
-    tray.setToolTip('Zalo');
-    
-    // Make tray icon clickable to show window
-    tray.on('click', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.show();
-        mainWindow.focus();
-      }
-    });
+  // Create tray icon - handle different environments
+  let iconPath = null;
+  
+  // Check if we're running in a packaged app (AppImage)
+  const isPackaged = app.isPackaged;
+  
+  if (isPackaged) {
+    // In packaged app, icon is relative to AppImage mount point (process.cwd() is already in app/)
+    iconPath = path.join(process.cwd(), 'pc-dist', 'favicon-512x512.png');
+  } else {
+    // In development, use the original path
+    iconPath = path.join(__dirname, 'app', 'pc-dist', 'favicon-512x512.png');
+  }
+  
+  if (iconPath && fs.existsSync(iconPath)) {
+    try {
+      tray = new Tray(iconPath);
+      tray.setToolTip('Zalo');
+      
+      // Make tray icon clickable to show window
+      tray.on('click', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+    } catch (error) {
+      console.error('Failed to create tray icon:', error);
+    }
   }
 });
 
