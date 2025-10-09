@@ -1,16 +1,42 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, Tray } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+let tray = null;
+let mainWindow = null;
 
 // Hide native menu bar but keep title bar
 app.on('browser-window-created', (_evt, win) => {
   try {
+    // Set mainWindow only once (first window created)
+    if (!mainWindow) {
+      mainWindow = win;
+
+      // Set up tray context menu
+      if (tray) {
+        const contextMenu = Menu.buildFromTemplate([
+          { label: 'Show', click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); mainWindow.focus(); } },
+          { label: 'Hide', click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } },
+          { label: 'Quit', click: () => app.quit() }
+        ]);
+        tray.setContextMenu(contextMenu);
+      }
+    }
+
     // Hide menu bar (Edit/View/Window) but keep title bar with min/max/close buttons
     win.setMenuBarVisibility(false);
     if (win.removeMenu) win.removeMenu();
     win.autoHideMenuBar = true;
     
     console.log('Window created - menu bar hidden, title bar should be visible');
+
+    // Handle close to tray for all windows
+    win.on('close', (event) => {
+      if (tray) {
+        event.preventDefault();
+        win.hide();
+      }
+    });
   } catch (e) {
     console.log('Error in browser-window-created:', e);
   }
@@ -18,6 +44,21 @@ app.on('browser-window-created', (_evt, win) => {
 
 app.once('ready', () => {
   try { Menu.setApplicationMenu(null); } catch (_) {}
+
+  // Create tray icon
+  const iconPath = path.join(__dirname, 'app', 'pc-dist', 'favicon-512x512.png');
+  if (fs.existsSync(iconPath)) {
+    tray = new Tray(iconPath);
+    tray.setToolTip('Zalo');
+    
+    // Make tray icon clickable to show window
+    tray.on('click', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+  }
 });
 
 // Skip normal Electron app setup and go straight to Zalo
