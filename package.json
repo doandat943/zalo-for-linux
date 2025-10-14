@@ -5,12 +5,14 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "download-dmg": "node scripts/download-dmg.js",
-    "prepare-app": "node scripts/prepare-app.js",
-    "prepare-zadark": "node scripts/prepare-zadark.js",
     "check-versions": "node scripts/check-versions.js",
-    "setup": "node scripts/setup.js",
-    "build": "node scripts/build.js"
+    "download-dmg": "node scripts/download-dmg.js",
+    "prepare-zadark": "node scripts/prepare-zadark.js",
+    "prepare-app": "node scripts/prepare-app.js",
+    "build": "node scripts/build.js",
+    "main": "SETUP=true BUILD=true node scripts/main.js",
+    "main:setup": "SETUP=true node scripts/main.js",
+    "main:build": "BUILD=true node scripts/main.js"
   },
   "keywords": [
     "zalo",

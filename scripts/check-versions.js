@@ -12,9 +12,9 @@ async function main() {
     // Get all required versions
     const targetZaloVersion = process.env.ZALO_VERSION || await getLatestZaloVersion();
     const targetZaDarkVersion = process.env.ZADARK_VERSION || await getLatestZaDarkVersion();
-
-    console.log(`📱 Target Zalo version: ${targetZaloVersion}`);
-    console.log(`🎨 Target ZaDark version: ${targetZaDarkVersion}`);
+    const targetCommit = process.env.COMMIT_HASH || execSync('git rev-parse --short HEAD', {
+      encoding: 'utf8'
+    }).trim();
 
     // Only check combinations in GitHub Actions
     if (process.env.GITHUB_ACTIONS) {
@@ -25,34 +25,27 @@ async function main() {
       console.log(`📦 Found ${existingCombo.length} existing combinations`);
 
       // Check if combination already exists
-      const targetCombo = `${targetZaloVersion}+${targetZaDarkVersion}`;
+      const targetCombo = `${targetZaloVersion}+${targetZaDarkVersion}+${targetCommit}`;
       const isExist = existingCombo.includes(targetCombo);
 
       if (isExist) {
-        console.log(`🎯 Workflow decision: skip`);
-        setWorkflowEnv('SKIP_BUILD', 'true');
+        console.log(`🎯 Workflow decision: skip (found ${targetCombo})`);
+        setWorkflowEnv('BUILD', 'false');
       } else {
-        console.log(`🎯 Workflow decision: build`);
-        setWorkflowEnv('SKIP_BUILD', 'false');
+        console.log(`🎯 Workflow decision: build (missing ${targetCombo})`);
       }
-
-      // Always set versions
-      setWorkflowEnv('ZALO_VERSION', targetZaloVersion);
-      setWorkflowEnv('ZADARK_VERSION', targetZaDarkVersion);
-    } else {
-      console.log('🏠 Local development - building everything');
-
-      // In local environment, always build with detected/provided versions
-      setWorkflowEnv('SKIP_BUILD', 'false');
-      setWorkflowEnv('ZALO_VERSION', targetZaloVersion);
-      setWorkflowEnv('ZADARK_VERSION', targetZaDarkVersion);
     }
+
+    setWorkflowEnv('ZALO_VERSION', targetZaloVersion);
+    setWorkflowEnv('ZADARK_VERSION', targetZaDarkVersion);
+    setWorkflowEnv('COMMIT_HASH', targetCommit);
 
     // Output for CI/scripts
     console.log('\n📋 Environment variables set:');
-    console.log(`SKIP_BUILD=${process.env.SKIP_BUILD || 'false'}`);
+    console.log(`BUILD=${process.env.BUILD || 'true'}`);
     console.log(`ZALO_VERSION=${process.env.ZALO_VERSION || 'none'}`);
     console.log(`ZADARK_VERSION=${process.env.ZADARK_VERSION || 'none'}`);
+    console.log(`COMMIT_HASH=${process.env.COMMIT_HASH || 'none'}`);
 
   } catch (error) {
     console.error('💥 Version check failed:', error.message);
@@ -142,11 +135,12 @@ async function getExistingCombinations() {
 
           releases.forEach(release => {
             release.assets.forEach(asset => {
-              const match = asset.name.match(/Zalo-([0-9.]+)(?:\+ZaDark-([0-9.]+))?-/);
+              const match = asset.name.match(/Zalo-([0-9.]+)\+ZaDark-([0-9.]+)-([0-9a-fA-F]+)\.AppImage$/);
               if (match) {
                 const zaloVer = match[1];
-                const zadarkVer = match[2] || 'none';
-                combinations.add(`${zaloVer}+${zadarkVer}`);
+                const zadarkVer = match[2];
+                const commitHash = match[3];
+                combinations.add(`${zaloVer}+${zadarkVer}+${commitHash}`);
               }
             });
           });

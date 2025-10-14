@@ -13,24 +13,23 @@ async function main() {
   if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
   }
-  else {
-    // Clean up any existing extracted DMG folders
-    console.log('🧹 Cleaning up any existing extracted folders...');
-    try {
-      const zaloFolders = execSync(`find "${TEMP_DIR}" -name "Zalo*" -type d 2>/dev/null || true`, {
-        cwd: TEMP_DIR,
-        encoding: 'utf8',
-        stdio: 'pipe'
-      }).trim().split('\n').filter(Boolean);
 
-      zaloFolders.forEach(folder => {
-        if (fs.existsSync(folder)) {
-          fs.rmSync(folder, { recursive: true, force: true });
-          console.log(`🗑️  Removed: ${folder}`);
-        }
-      });
-    } catch (error) { }
-  }
+  // Clean up any existing extracted DMG folders
+  console.log('🧹 Cleaning up any existing extracted folders...');
+  try {
+    const zaloFolders = execSync(`find "${TEMP_DIR}" -name "Zalo*" -type d 2>/dev/null || true`, {
+      cwd: TEMP_DIR,
+      encoding: 'utf8',
+      stdio: 'pipe'
+    }).trim().split('\n').filter(Boolean);
+
+    zaloFolders.forEach(folder => {
+      if (fs.existsSync(folder)) {
+        fs.rmSync(folder, { recursive: true, force: true });
+        console.log(`🗑️  Removed: ${folder}`);
+      }
+    });
+  } catch (error) { }
 
   if (fs.existsSync(APP_DIR)) {
     fs.rmSync(APP_DIR, { recursive: true, force: true });
