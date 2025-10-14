@@ -30,9 +30,9 @@
     "url": "https://github.com/doandat943/zalo-for-linux/issues"
   },
   "devDependencies": {
-    "@electron/asar": "^3.2.10",
+    "@electron/asar": "^4.0.1",
     "electron": "^22.3.27",
-    "electron-builder": "^24.13.3",
+    "electron-builder": "^26.0.12",
     "node-html-parser": "^7.0.1"
   },
   "build": {
