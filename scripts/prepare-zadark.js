@@ -1,17 +1,12 @@
+const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 const ZADARK_DIR = path.join(__dirname, '..', 'plugins', 'zadark');
 
-console.log('🎨 Preparing ZaDark...');
-
-// Run preparation if this file is executed directly
-if (require.main === module) {
-  main();
-}
-
 async function main() {
+  console.log('🎨 Preparing ZaDark...');
+
   try {
     // Check if we should skip - no ZADARK_VERSION means we should skip
     if (!process.env.ZADARK_VERSION) {
@@ -154,6 +149,10 @@ async function buildZaDarkAssets() {
     console.error('❌ Failed to build ZaDark:', error.message);
     process.exit(1);
   }
+}
+
+if (require.main === module) {
+  main();
 }
 
 module.exports = { main };

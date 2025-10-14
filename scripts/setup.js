@@ -1,6 +1,6 @@
-console.log('🚀 Starting setup workflow...');
+async function main() {
+  console.log('🚀 Starting setup workflow...');
 
-async function runSetup() {
   try {
     // Step 1: Check versions and determine workflow
     console.log('\n📋 Step 1: Checking versions...');
@@ -33,5 +33,8 @@ async function runSetup() {
   }
 }
 
-// Run the setup
-runSetup();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { main };

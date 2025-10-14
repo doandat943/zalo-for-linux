@@ -1,16 +1,10 @@
+const { execSync } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
-const { execSync } = require('child_process');
 
-const TEMP_DIR = path.join(__dirname, '..', 'temp');
 const APP_DIR = path.join(__dirname, '..', 'app');
+const TEMP_DIR = path.join(__dirname, '..', 'temp');
 
-// Run extraction if this file is executed directly
-if (require.main === module) {
-  main();
-}
-
-// Run extraction
 async function main() {
   console.log('🔧 Starting Zalo DMG extraction process...');
   console.log('📂 Work directory:', TEMP_DIR);
@@ -339,6 +333,10 @@ async function showInteractiveMenu(files) {
       process.exit(1);
     });
   });
+}
+
+if (require.main === module) {
+  main();
 }
 
 module.exports = { main };

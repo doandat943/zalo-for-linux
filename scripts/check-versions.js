@@ -1,17 +1,13 @@
+const { execSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { execSync } = require('child_process');
 
 const ZADARK_DIR = path.join(__dirname, '..', 'plugins', 'zadark');
 
-console.log('🔍 Checking versions and determining build workflow...');
-
-// Run main function if this file is executed directly
-if (require.main === module) {
-  main();
-}
-
 async function main() {
+  console.log('🔍 Checking versions and determining build workflow...');
+
   try {
     // Get all required versions
     const targetZaloVersion = process.env.ZALO_VERSION || await getLatestZaloVersion();
@@ -34,22 +30,22 @@ async function main() {
 
       if (isExist) {
         console.log(`🎯 Workflow decision: skip`);
-        process.env.SKIP_BUILD = 'true';
+        setWorkflowEnv('SKIP_BUILD', 'true');
       } else {
         console.log(`🎯 Workflow decision: build`);
-        delete process.env.SKIP_BUILD;
+        setWorkflowEnv('SKIP_BUILD', 'false');
       }
 
       // Always set versions
-      process.env.ZALO_VERSION = targetZaloVersion;
-      process.env.ZADARK_VERSION = targetZaDarkVersion;
+      setWorkflowEnv('ZALO_VERSION', targetZaloVersion);
+      setWorkflowEnv('ZADARK_VERSION', targetZaDarkVersion);
     } else {
       console.log('🏠 Local development - building everything');
 
       // In local environment, always build with detected/provided versions
-      delete process.env.SKIP_BUILD;
-      process.env.ZALO_VERSION = targetZaloVersion;
-      process.env.ZADARK_VERSION = targetZaDarkVersion;
+      setWorkflowEnv('SKIP_BUILD', 'false');
+      setWorkflowEnv('ZALO_VERSION', targetZaloVersion);
+      setWorkflowEnv('ZADARK_VERSION', targetZaDarkVersion);
     }
 
     // Output for CI/scripts
@@ -170,6 +166,22 @@ async function getExistingCombinations() {
     });
     req.end();
   });
+}
+
+function setWorkflowEnv(key, value) {
+  if (typeof value === 'undefined') {
+    return;
+  }
+
+  process.env[key] = value;
+
+  if (process.env.GITHUB_ENV) {
+    fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
+  }
+}
+
+if (require.main === module) {
+  main();
 }
 
 module.exports = { main };
