@@ -4,6 +4,15 @@ const fs = require('fs');
 
 let tray = null;
 let mainWindow = null;
+let isAppQuitting = false;
+
+app.on('before-quit', () => {
+  isAppQuitting = true;
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+});
 
 // Hide native menu bar but keep title bar
 app.on('browser-window-created', (_evt, win) => {
@@ -15,9 +24,34 @@ app.on('browser-window-created', (_evt, win) => {
       // Set up tray context menu
       if (tray) {
         const contextMenu = Menu.buildFromTemplate([
-          { label: 'Show', click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); mainWindow.focus(); } },
-          { label: 'Hide', click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } },
-          { label: 'Quit', click: () => app.quit() }
+          {
+            label: 'Show',
+            click: () => {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.show();
+                mainWindow.focus();
+              }
+            }
+          },
+          {
+            label: 'Hide',
+            click: () => {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.hide();
+              }
+            }
+          },
+          {
+            label: 'Quit',
+            click: () => {
+              isAppQuitting = true;
+              if (tray) {
+                tray.destroy();
+                tray = null;
+              }
+              app.quit();
+            }
+          }
         ]);
         tray.setContextMenu(contextMenu);
       }
@@ -32,7 +66,7 @@ app.on('browser-window-created', (_evt, win) => {
 
     // Handle close to tray for all windows
     win.on('close', (event) => {
-      if (tray) {
+      if (!isAppQuitting && tray) {
         event.preventDefault();
         win.hide();
       }
