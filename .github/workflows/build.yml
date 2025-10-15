@@ -108,3 +108,28 @@ jobs:
           ${{ steps.build.outputs.zadark_appimage_file }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+
+    - name: Cleanup old release assets
+      if: steps.build.outputs.build == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_TAG: ${{ steps.build.outputs.zalo_version }}
+        CURRENT_COMMIT: ${{ env.COMMIT_HASH }}
+      run: |
+        set -euo pipefail
+
+        echo "Cleaning up assets for release $RELEASE_TAG (keeping commit $CURRENT_COMMIT)"
+
+        asset_names=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' || true)
+
+        if [ -z "$asset_names" ]; then
+          echo "No assets found for release $RELEASE_TAG"
+          exit 0
+        fi
+
+        for name in $asset_names; do
+          if [[ "$name" == Zalo-*.AppImage ]] && [[ "$name" != *"$CURRENT_COMMIT"* ]]; then
+            echo "Removing old asset: $name"
+            gh release delete-asset "$RELEASE_TAG" "$name" --yes
+          fi
+        done
