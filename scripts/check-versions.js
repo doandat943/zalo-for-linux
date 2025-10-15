@@ -12,9 +12,10 @@ async function main() {
     // Get all required versions
     const targetZaloVersion = process.env.ZALO_VERSION || await getLatestZaloVersion();
     const targetZaDarkVersion = process.env.ZADARK_VERSION || await getLatestZaDarkVersion();
-    const targetCommit = process.env.COMMIT_HASH || execSync('git rev-parse --short HEAD', {
+    const targetCommit = execSync('git rev-parse --short HEAD', {
       encoding: 'utf8'
     }).trim();
+    fs.appendFileSync(process.env.GITHUB_ENV, `COMMIT_HASH=${targetCommit}\n`);
 
     // Only check combinations in GitHub Actions
     if (process.env.GITHUB_ACTIONS) {
@@ -39,14 +40,13 @@ async function main() {
 
       process.env.ZALO_VERSION = targetZaloVersion;
       process.env.ZADARK_VERSION = targetZaDarkVersion;
-      process.env.COMMIT_HASH = targetCommit;
+
 
       // Output for CI/scripts
       console.log('\n📋 Environment variables set:');
       console.log(`BUILD=${process.env.BUILD || 'none'}`);
       console.log(`ZALO_VERSION=${process.env.ZALO_VERSION || 'none'}`);
       console.log(`ZADARK_VERSION=${process.env.ZADARK_VERSION || 'none'}`);
-      console.log(`COMMIT_HASH=${process.env.COMMIT_HASH || 'none'}`);
     }
   } catch (error) {
     console.error('💥 Version check failed:', error.message);
