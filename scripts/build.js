@@ -185,24 +185,12 @@ async function build(buildName = '', outputSuffix = '') {
       specificOutputs.forEach(output => {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, output + '\n');
       });
-      
+
       console.log(`\n📋 Exported ${prefix.replace('_', '')} build info to GitHub Actions`);
     }
   } catch (error) {
     console.error('💥 Build failed:', error.message);
     process.exit(1);
-  }
-}
-
-function setWorkflowEnv(key, value) {
-  if (typeof value === 'undefined') {
-    return;
-  }
-
-  process.env[key] = value;
-
-  if (process.env.GITHUB_ENV) {
-    fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
   }
 }
 

@@ -34,22 +34,20 @@ async function main() {
       } else {
         console.log(`🎯 Workflow decision: build (missing ${targetCombo})`);
         process.env.BUILD = 'true';
-        if (process.env.GITHUB_OUTPUT) {
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `build=true\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `build=true\n`);
       }
+
+      process.env.ZALO_VERSION = targetZaloVersion;
+      process.env.ZADARK_VERSION = targetZaDarkVersion;
+      process.env.COMMIT_HASH = targetCommit;
+
+      // Output for CI/scripts
+      console.log('\n📋 Environment variables set:');
+      console.log(`BUILD=${process.env.BUILD || 'none'}`);
+      console.log(`ZALO_VERSION=${process.env.ZALO_VERSION || 'none'}`);
+      console.log(`ZADARK_VERSION=${process.env.ZADARK_VERSION || 'none'}`);
+      console.log(`COMMIT_HASH=${process.env.COMMIT_HASH || 'none'}`);
     }
-
-    process.env.ZALO_VERSION = targetZaloVersion;
-    process.env.ZADARK_VERSION = targetZaDarkVersion;
-    process.env.COMMIT_HASH = targetCommit;
-
-    // Output for CI/scripts
-    console.log('\n📋 Environment variables set:');
-    console.log(`BUILD=${process.env.BUILD || 'none'}`);
-    console.log(`ZALO_VERSION=${process.env.ZALO_VERSION || 'none'}`);
-    console.log(`ZADARK_VERSION=${process.env.ZADARK_VERSION || 'none'}`);
-    console.log(`COMMIT_HASH=${process.env.COMMIT_HASH || 'none'}`);
-
   } catch (error) {
     console.error('💥 Version check failed:', error.message);
     process.exit(0); // Don't fail the whole pipeline
