@@ -32,7 +32,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
         cache: 'npm'
         
     - name: Cache Electron binaries
@@ -56,6 +56,7 @@ jobs:
       run: npm run main
         
     - name: Upload Original AppImage artifact
+      if: steps.build.outputs.build == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.build.outputs.original_appimage_name }}
@@ -63,6 +64,7 @@ jobs:
         retention-days: 30
         
     - name: Upload ZaDark AppImage artifact
+      if: steps.build.outputs.build == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.build.outputs.zadark_appimage_name }}
@@ -70,6 +72,7 @@ jobs:
         retention-days: 30
         
     - name: Create Release
+      if: steps.build.outputs.build == 'true'
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.build.outputs.zalo_version }}
