@@ -64,7 +64,7 @@ jobs:
         retention-days: 30
         
     - name: Upload ZaDark AppImage artifact
-      if: steps.build.outputs.build == true
+      if: steps.build.outputs.build == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.build.outputs.zadark_appimage_name }}
@@ -72,7 +72,7 @@ jobs:
         retention-days: 30
         
     - name: Create Release
-      if: steps.build.outputs.build == true
+      if: steps.build.outputs.build == 'true'
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.build.outputs.zalo_version }}
@@ -110,7 +110,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
 
     - name: Cleanup old release assets
-      if: steps.build.outputs.build == true
+      if: steps.build.outputs.build == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         RELEASE_TAG: ${{ steps.build.outputs.zalo_version }}
