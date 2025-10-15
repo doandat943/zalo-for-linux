@@ -57,7 +57,7 @@ async function main() {
           return `  ${type} • ${f} (${sizeStr})`;
         })
         .join('\n') || '  (no AppImage files)';
-      setWorkflowEnv('zalo_version', ZALO_VERSION);
+      setWorkflowEnv('BUILD', true);
       console.log('\n📁 All built files in dist/:');
       console.log(allFiles);
     }
