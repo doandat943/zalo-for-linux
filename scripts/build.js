@@ -57,11 +57,9 @@ async function main() {
           return `  ${type} • ${f} (${sizeStr})`;
         })
         .join('\n') || '  (no AppImage files)';
-
       console.log('\n📁 All built files in dist/:');
       console.log(allFiles);
     }
-
   } catch (error) {
     console.error('💥 Main workflow failed:', error.message);
     process.exit(1);
@@ -194,7 +192,6 @@ async function build(buildName = '', outputSuffix = '') {
     process.exit(1);
   }
 }
-
 
 if (require.main === module) {
   main();

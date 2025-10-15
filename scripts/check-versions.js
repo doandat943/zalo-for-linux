@@ -12,9 +12,10 @@ async function main() {
     // Get all required versions
     const targetZaloVersion = process.env.ZALO_VERSION || await getLatestZaloVersion();
     const targetZaDarkVersion = process.env.ZADARK_VERSION || await getLatestZaDarkVersion();
-    const targetCommit = process.env.COMMIT_HASH || execSync('git rev-parse --short HEAD', {
+    const targetCommit = execSync('git rev-parse --short HEAD', {
       encoding: 'utf8'
     }).trim();
+    fs.appendFileSync(process.env.GITHUB_ENV, `COMMIT_HASH=${targetCommit}\n`);
 
     // Only check combinations in GitHub Actions
     if (process.env.GITHUB_ACTIONS) {
@@ -30,23 +31,22 @@ async function main() {
 
       if (isExist) {
         console.log(`🎯 Workflow decision: skip (found ${targetCombo})`);
-        setWorkflowEnv('BUILD', 'false');
+        process.env.BUILD = 'false';
       } else {
         console.log(`🎯 Workflow decision: build (missing ${targetCombo})`);
+        process.env.BUILD = 'true';
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `build=true\n`);
       }
+
+      process.env.ZALO_VERSION = targetZaloVersion;
+      process.env.ZADARK_VERSION = targetZaDarkVersion;
+
+      // Output for CI/scripts
+      console.log('\n📋 Environment variables set:');
+      console.log(`BUILD=${process.env.BUILD || 'none'}`);
+      console.log(`ZALO_VERSION=${process.env.ZALO_VERSION || 'none'}`);
+      console.log(`ZADARK_VERSION=${process.env.ZADARK_VERSION || 'none'}`);
     }
-
-    setWorkflowEnv('ZALO_VERSION', targetZaloVersion);
-    setWorkflowEnv('ZADARK_VERSION', targetZaDarkVersion);
-    setWorkflowEnv('COMMIT_HASH', targetCommit);
-
-    // Output for CI/scripts
-    console.log('\n📋 Environment variables set:');
-    console.log(`BUILD=${process.env.BUILD || 'true'}`);
-    console.log(`ZALO_VERSION=${process.env.ZALO_VERSION || 'none'}`);
-    console.log(`ZADARK_VERSION=${process.env.ZADARK_VERSION || 'none'}`);
-    console.log(`COMMIT_HASH=${process.env.COMMIT_HASH || 'none'}`);
-
   } catch (error) {
     console.error('💥 Version check failed:', error.message);
     process.exit(0); // Don't fail the whole pipeline
@@ -160,18 +160,6 @@ async function getExistingCombinations() {
     });
     req.end();
   });
-}
-
-function setWorkflowEnv(key, value) {
-  if (typeof value === 'undefined') {
-    return;
-  }
-
-  process.env[key] = value;
-
-  if (process.env.GITHUB_ENV) {
-    fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
-  }
 }
 
 if (require.main === module) {
