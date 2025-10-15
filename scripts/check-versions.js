@@ -33,6 +33,7 @@ async function main() {
         setWorkflowEnv('BUILD', 'false');
       } else {
         console.log(`🎯 Workflow decision: build (missing ${targetCombo})`);
+        setWorkflowEnv('BUILD', 'true');
       }
     }
 
