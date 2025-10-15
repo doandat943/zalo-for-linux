@@ -20,7 +20,7 @@ async function main() {
 
       // Export global outputs for workflow
       if (process.env.GITHUB_OUTPUT) {
-        setWorkflowEnv('zalo_version', ZALO_VERSION);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `zalo_version=${ZALO_VERSION}\n`);
       }
     } else {
       console.warn('⚠️  package.json.bak not found, version will be unknown');
@@ -57,7 +57,6 @@ async function main() {
           return `  ${type} • ${f} (${sizeStr})`;
         })
         .join('\n') || '  (no AppImage files)';
-      setWorkflowEnv('BUILD', true);
       console.log('\n📁 All built files in dist/:');
       console.log(allFiles);
     }
@@ -178,9 +177,15 @@ async function build(buildName = '', outputSuffix = '') {
       const prefix = outputSuffix === '-ZaDark' ? 'zadark_' : 'original_';
 
       // Export build-specific info
-      setWorkflowEnv(`${prefix}appimage_file`, appImageFile);
-      setWorkflowEnv(`${prefix}appimage_name`, appImageName);
+      const specificOutputs = [
+        `${prefix}appimage_file=${appImageFile || ''}`,
+        `${prefix}appimage_name=${appImageName || ''}`
+      ];
 
+      specificOutputs.forEach(output => {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, output + '\n');
+      });
+      
       console.log(`\n📋 Exported ${prefix.replace('_', '')} build info to GitHub Actions`);
     }
   } catch (error) {

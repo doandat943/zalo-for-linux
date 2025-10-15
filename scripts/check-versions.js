@@ -30,16 +30,18 @@ async function main() {
 
       if (isExist) {
         console.log(`🎯 Workflow decision: skip (found ${targetCombo})`);
-        setWorkflowEnv('BUILD', 'false');
+        process.env.BUILD = 'false';
       } else {
         console.log(`🎯 Workflow decision: build (missing ${targetCombo})`);
-        setWorkflowEnv('BUILD', 'true');
+        process.env.BUILD = 'true';
+        if (process.env.GITHUB_OUTPUT) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `build=true\n`);
       }
     }
 
-    setWorkflowEnv('ZALO_VERSION', targetZaloVersion);
-    setWorkflowEnv('ZADARK_VERSION', targetZaDarkVersion);
-    setWorkflowEnv('COMMIT_HASH', targetCommit);
+    process.env.ZALO_VERSION = targetZaloVersion;
+    process.env.ZADARK_VERSION = targetZaDarkVersion;
+    process.env.COMMIT_HASH = targetCommit;
 
     // Output for CI/scripts
     console.log('\n📋 Environment variables set:');
@@ -161,18 +163,6 @@ async function getExistingCombinations() {
     });
     req.end();
   });
-}
-
-function setWorkflowEnv(key, value) {
-  if (typeof value === 'undefined') {
-    return;
-  }
-
-  process.env[key] = value;
-
-  if (process.env.GITHUB_ENV) {
-    fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
-  }
 }
 
 if (require.main === module) {
