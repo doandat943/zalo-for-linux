@@ -10,68 +10,61 @@ let ZALO_VERSION = null;
 async function main() {
   console.log('🚀 Building Zalo for Linux...');
 
-  // Check if we should skip build
-  if (process.env.SKIP_BUILD === 'true') {
-    console.log('ℹ️  Build skipped - combination already exists');
-    process.exit(0);
-  }
-  else {
-    try {
-      // Read version from package.json.bak
-      const packageJsonBakPath = path.join(APP_DIR, 'package.json.bak');
-      if (fs.existsSync(packageJsonBakPath)) {
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonBakPath, 'utf8'));
-        ZALO_VERSION = packageJson.version;
-        console.log('📝 Read Zalo version from package.json.bak:', ZALO_VERSION);
+  try {
+    // Read version from package.json.bak
+    const packageJsonBakPath = path.join(APP_DIR, 'package.json.bak');
+    if (fs.existsSync(packageJsonBakPath)) {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonBakPath, 'utf8'));
+      ZALO_VERSION = packageJson.version;
+      console.log('📝 Read Zalo version from package.json.bak:', ZALO_VERSION);
 
-        // Export global outputs for workflow
-        if (process.env.GITHUB_OUTPUT) {
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `zalo_version=${ZALO_VERSION}\n`);
-        }
-      } else {
-        console.warn('⚠️  package.json.bak not found, version will be unknown');
+      // Export global outputs for workflow
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `zalo_version=${ZALO_VERSION}\n`);
       }
-
-      // Phase 1: Build original Zalo
-      console.log('\n🔥 PHASE 1: Building Zalo (Original)...\n');
-
-      await build('(Original)', '');
-
-      // Phase 2: Apply ZaDark integration and build final product
-      console.log('\n🔥 PHASE 2: Building Zalo (with ZaDark)...\n');
-
-      // Patch ZaDark directly into APP_DIR
-      await integrateZaDark();
-      await build('(with ZaDark)', '-ZaDark');
-
-      // Final summary
-      console.log('\n🎉 ===== BUILD SUMMARY =====');
-      const distDir = path.join(BASE_DIR, 'dist');
-
-      if (fs.existsSync(distDir)) {
-        const allFiles = fs.readdirSync(distDir)
-          .filter(f => f.endsWith('.AppImage'))
-          .sort()
-          .map(f => {
-            const filePath = path.join(distDir, f);
-            const size = fs.statSync(filePath).size;
-            const sizeStr = size > 1024 * 1024
-              ? `${Math.round(size / 1024 / 1024)}MB`
-              : `${Math.round(size / 1024)}KB`;
-
-            const type = f.includes('+ZaDark-') ? '🎨 ZaDark' : '📦 Original';
-            return `  ${type} • ${f} (${sizeStr})`;
-          })
-          .join('\n') || '  (no AppImage files)';
-
-        console.log('\n📁 All built files in dist/:');
-        console.log(allFiles);
-      }
-
-    } catch (error) {
-      console.error('💥 Main workflow failed:', error.message);
-      process.exit(1);
+    } else {
+      console.warn('⚠️  package.json.bak not found, version will be unknown');
     }
+
+    // Phase 1: Build original Zalo
+    console.log('\n🔥 PHASE 1: Building Zalo (Original)...\n');
+
+    await build('(Original)', '');
+
+    // Phase 2: Apply ZaDark integration and build final product
+    console.log('\n🔥 PHASE 2: Building Zalo (with ZaDark)...\n');
+
+    // Patch ZaDark directly into APP_DIR
+    await integrateZaDark();
+    await build('(with ZaDark)', '-ZaDark');
+
+    // Final summary
+    console.log('\n🎉 ===== BUILD SUMMARY =====');
+    const distDir = path.join(BASE_DIR, 'dist');
+
+    if (fs.existsSync(distDir)) {
+      const allFiles = fs.readdirSync(distDir)
+        .filter(f => f.endsWith('.AppImage'))
+        .sort()
+        .map(f => {
+          const filePath = path.join(distDir, f);
+          const size = fs.statSync(filePath).size;
+          const sizeStr = size > 1024 * 1024
+            ? `${Math.round(size / 1024 / 1024)}MB`
+            : `${Math.round(size / 1024)}KB`;
+
+          const type = f.includes('+ZaDark-') ? '🎨 ZaDark' : '📦 Original';
+          return `  ${type} • ${f} (${sizeStr})`;
+        })
+        .join('\n') || '  (no AppImage files)';
+
+      console.log('\n📁 All built files in dist/:');
+      console.log(allFiles);
+    }
+
+  } catch (error) {
+    console.error('💥 Main workflow failed:', error.message);
+    process.exit(1);
   }
 }
 
