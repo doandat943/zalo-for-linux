@@ -43,7 +43,7 @@ async function main() {
 
     // Output for CI/scripts
     console.log('\n📋 Environment variables set:');
-    console.log(`BUILD=${process.env.BUILD || 'true'}`);
+    console.log(`BUILD=${process.env.BUILD || 'none'}`);
     console.log(`ZALO_VERSION=${process.env.ZALO_VERSION || 'none'}`);
     console.log(`ZADARK_VERSION=${process.env.ZADARK_VERSION || 'none'}`);
     console.log(`COMMIT_HASH=${process.env.COMMIT_HASH || 'none'}`);
