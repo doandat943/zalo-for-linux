@@ -39,21 +39,17 @@ This project includes integrated [ZaDark](https://github.com/quaric/zadark), ZaD
 
 ## 🚀 Quick Start
 
-### Usage (Recommended)
+### Usage
 
-#### Method 1: Using Gear Lever (AppImage Manager)
-
-This is the easiest method to manage and integrate the AppImage into your application menu.
+#### Method 1: Using Gear Lever (Recommended)
 
 1.  Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
-2.  Install **Gear Lever** from [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever). It's a utility to manage AppImages with ease.
+2.  Install **Gear Lever** from [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever).
 3.  Open **Gear Lever**.
 4.  Click the **"Open"** button in the top-left corner and select the `.AppImage` file you downloaded.
 5.  The app will now appear in Gear Lever. Click the **"Unlock"** button, then choose **"Move to the app menu"** to integrate it into your system's application launcher.
 
 #### Method 2: Direct Execution
-
-If you prefer to run the AppImage directly:
 
 1.  Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
 2.  Open a terminal, navigate to the download directory, and make the file executable:
@@ -65,36 +61,35 @@ If you prefer to run the AppImage directly:
     ./Zalo-*.AppImage
     ```
 
-#### Enable Automatic Updates with Gear Lever
+#### Enable Automatic Updates with Gear Lever 4.+
 
-To enable automatic update checks for Zalo in Gear Lever, follow these steps:
+1. Open **Gear Lever** and select **Zalo** from your applications list.
+2. Scroll down to **Update management** section.
+3. Set **Source** to **GitHub**.
+4. Fill in the following fields:
 
-1.  Open **Gear Lever** and select **Zalo** from your list of applications.
-2.  Scroll down to the **Update Management** section.
-3.  For the **Source** field, select **GitHub**.
-4.  In the **Update URL** field, paste **one** of the following patterns, depending on which variant of Zalo you are using:
+**Repo URL**
 
-    ##### For Non-ZaDark Variant
+```
+https://github.com/doandat943/zalo-for-linux
+```
 
-    ```
-    https://github.com/doandat943/zalo-for-linux/releases/download/*/Zalo-*-*.AppImage
-    ```
+**Release file name**
 
-    ##### For ZaDark Variant
+- **Non-ZaDark Variant:**
 
-    ```
-    https://github.com/doandat943/zalo-for-linux/releases/download/*/Zalo-*+ZaDark-*-*.AppImage
-    ```
+  ```
+  Zalo-*-*.AppImage
+  ```
 
-5.  Click **Save**. If the URL field turns green, the pattern has been accepted successfully.
-6.  Finally, click the **Reload metadata** button to fetch the latest version information.
+- **ZaDark Variant:**
+  ```
+  Zalo-*+ZaDark-*-*.AppImage
+  ```
 
-#### How to Update Zalo
+**Allow pre-releases**
 
-Once the update source is configured, you can check for updates at any time by:
-
-1.  Opening **Gear Lever**.
-2.  Clicking the **Check for updates** button.
+Toggle to enable/disable pre-release updates.
 
 ### Build from Source
 
