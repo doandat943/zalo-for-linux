@@ -44,7 +44,7 @@ async function main() {
 
     if (fs.existsSync(distDir)) {
       const allFiles = fs.readdirSync(distDir)
-        .filter(f => f.endsWith('.AppImage'))
+        .filter(f => f.endsWith('.AppImage') || f.endsWith('.rpm'))
         .sort()
         .map(f => {
           const filePath = path.join(distDir, f);
@@ -54,9 +54,10 @@ async function main() {
             : `${Math.round(size / 1024)}KB`;
 
           const type = f.includes('+ZaDark-') ? '🎨 ZaDark' : '📦 Original';
-          return `  ${type} • ${f} (${sizeStr})`;
+          const extension = f.endsWith('.AppImage') ? 'AppImage' : 'RPM';
+          return `  ${type} • ${f} (${sizeStr}) [${extension}]`;
         })
-        .join('\n') || '  (no AppImage files)';
+        .join('\n') || '  (no build files found)';
       console.log('\n📁 All built files in dist/:');
       console.log(allFiles);
     }
@@ -116,11 +117,11 @@ async function build(buildName = '', outputSuffix = '') {
         }
       }
 
-      artifactName = `Zalo-${ZALO_VERSION}+ZaDark-${zadarkVersion}-${commitHash}.AppImage`;
+      artifactName = `Zalo-${ZALO_VERSION}+ZaDark-${zadarkVersion}-${commitHash}.\${ext}`;
       buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
       console.log(`🔨 Building${buildName ? ` ${buildName}` : ''} with Zalo: ${ZALO_VERSION}, ZaDark: ${zadarkVersion}, Commit: ${commitHash}`);
     } else {
-      artifactName = `Zalo-${ZALO_VERSION}-${commitHash}.AppImage`;
+      artifactName = `Zalo-${ZALO_VERSION}-${commitHash}.\${ext}`;
       buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
       console.log(`🔨 Building${buildName ? ` ${buildName}` : ''} with Zalo: ${ZALO_VERSION}, Commit: ${commitHash}`);
     }
@@ -175,10 +176,19 @@ async function build(buildName = '', outputSuffix = '') {
     if (process.env.GITHUB_OUTPUT) {
       const prefix = outputSuffix === '-ZaDark' ? 'zadark_' : 'original_';
 
+      // Find build files
+      const buildFiles = fs.readdirSync(path.join(BASE_DIR, 'dist'))
+        .filter(f => f.includes(commitHash) && (f.endsWith('.AppImage') || f.endsWith('.rpm')));
+
+      const appImageFile = buildFiles.find(f => f.endsWith('.AppImage'));
+      const rpmFile = buildFiles.find(f => f.endsWith('.rpm'));
+
       // Export build-specific info
       const specificOutputs = [
-        `${prefix}appimage_file=${appImageFile || ''}`,
-        `${prefix}appimage_name=${appImageName || ''}`
+        `${prefix}appimage_file=${appImageFile ? path.join('dist', appImageFile) : ''}`,
+        `${prefix}appimage_name=${appImageFile || ''}`,
+        `${prefix}rpm_file=${rpmFile ? path.join('dist', rpmFile) : ''}`,
+        `${prefix}rpm_name=${rpmFile || ''}`
       ];
 
       specificOutputs.forEach(output => {
