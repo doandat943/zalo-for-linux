@@ -8,14 +8,14 @@ Thanks **realdtn2** for the solution: [realdtn2/zalo-linux-unofficial-2024](http
 
 ## ⚠️ Important: Known Issues
 
-- **Message Synchronization (E2EE):** Due to missing native macOS libraries for End-to-End Encryption.For more details, see [issue #1](https://github.com/realdtn2/zalo-linux-unofficial-2024/issues/1). Solution: using **Wine** to run the Windows version of Zalo to perform the initial data sync, and then migrating the data to this Linux version. For more details, see [issue #2](https://github.com/realdtn2/zalo-linux-unofficial-2024/issues/2).
-- **Can't make or receive calls:** Due to missing native macOS libraries
+- **Message Synchronization (E2EE):** Zalo uses a proprietary native module (`db-cross-v4`) for End-to-End Encryption operations. This module only ships as a macOS binary (Mach-O) and cannot be loaded on Linux, so E2EE message sync will fail. **Workaround:** use **Wine** to run the Windows version of Zalo to perform the initial data sync, then migrate the data to this Linux version. For more details, see [issue #1](https://github.com/realdtn2/zalo-linux-unofficial-2024/issues/1) and [issue #2](https://github.com/realdtn2/zalo-linux-unofficial-2024/issues/2).
+- **Can't make or receive calls:** The call module (`zcall`) only ships as a macOS native binary.
 - **Can't see message reactions:** You won't see reactions in the UI (no badges/counters), but reacting still works and others can see your reaction.
-- **No Photos/Videos, Files and Links on the Conversation Info panel** for some reason (you can still viewing image/video, file or link like normal, it just don't appear on the conversation info panel like this)
-- Crash when click **Screenshot without Zalo window button**
+- **No Photos/Videos, Files and Links on the Conversation Info panel** for some reason (you can still view images/videos, files or links normally, they just don't appear on the conversation info panel).
+- Crash when clicking **Screenshot without Zalo window button**
 - **✅ Fixed: No title bar with minimize/maximize/close buttons** - Thanks to [@NanKillBro](https://github.com/NanKillBro) for the solution. For more details, see [issue #4](https://github.com/doandat943/zalo-for-linux/issues/4)
 - **✅ Fixed: No tray menu icon**
-- **✅ Fixed: Freeze on login screen** - Patched sqlite3 native bindings to work correctly on Linux.
+- **✅ Fixed: Freeze on login screen** - Replaced macOS sqlite3 binaries with native Linux builds. See [issue #13](https://github.com/doandat943/zalo-for-linux/issues/13).
 
 This project is best suited for users who need a native-feeling Zalo client on Linux and are comfortable with the technical workarounds required for full functionality.
 
