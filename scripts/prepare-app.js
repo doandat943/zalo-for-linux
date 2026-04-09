@@ -214,24 +214,24 @@ async function extractAppAsar() {
     console.error('❌ Failed to patch main.js:', e && e.message);
   }
 
-  // Patch sqlite3-binding: replace ${process.platform} with darwin (to fix freeze on login screen)
+  // Patch sqlite3: The original DMG only ships macOS (Mach-O) binaries for sqlite3.
+  // On Linux, loading these causes "invalid ELF header" errors, which freezes the login screen (>= 25.12.11).
+  // We replace them with a real Linux binary from the project's sqlite3 devDependency.
   try {
-    const sqliteBindingPath = path.join(APP_DIR, 'native', 'nativelibs', 'sqlite3', 'sqlite3-binding.js');
-    if (fs.existsSync(sqliteBindingPath)) {
-      let bindingContent = fs.readFileSync(sqliteBindingPath, 'utf8');
+    const sqliteTargetDir = path.join(APP_DIR, 'native', 'nativelibs', 'sqlite3', 'binding', 'napi-v6-linux-x64');
+    fs.mkdirSync(sqliteTargetDir, { recursive: true });
 
-      if (bindingContent.includes('${process.platform}')) {
-        bindingContent = bindingContent.replace(/\$\{process\.platform\}/g, 'darwin');
-        fs.writeFileSync(sqliteBindingPath, bindingContent, 'utf8');
-        console.log('✅ Replaced ${process.platform} with darwin in sqlite3-binding (inline)');
-      } else {
-        console.log('⚠️  ${process.platform} not found in sqlite3-binding, skipping patch');
-      }
+    const targetNodePath = path.join(sqliteTargetDir, 'node_sqlite3.node');
+    const sourceNodePath = path.join(__dirname, '..', 'node_modules', 'sqlite3', 'build', 'Release', 'node_sqlite3.node');
+
+    if (fs.existsSync(sourceNodePath)) {
+      fs.copyFileSync(sourceNodePath, targetNodePath);
+      console.log('✅ SQLite3 Linux binary installed successfully!');
     } else {
-      console.log('⚠️  sqlite3-binding.js not present, skipping sqlite patch');
+      console.log('⚠️  SQLite3 binary not found in node_modules. Run "npm install" first.');
     }
   } catch (e) {
-    console.error('❌ Failed to patch sqlite3-binding:', e && e.message);
+    console.error('❌ Failed to patch sqlite3:', e && e.message);
   }
 }
 
