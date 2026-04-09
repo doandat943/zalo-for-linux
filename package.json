@@ -46,8 +46,13 @@
     },
     "files": [
       "main.js",
-      "package.json",
-      "assets/**/*"
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/icons/zalo.png",
+        "to": "assets/icons/zalo.png"
+      }
     ],
     "extraFiles": [
       {
@@ -71,7 +76,7 @@
       "category": "Network",
       "synopsis": "Zalo messaging app for Linux",
       "description": "Unofficial port of Zalo messaging application for Linux systems.",
-      "icon": "app/pc-dist/favicon-512x512.png"
+      "icon": "assets/icons/zalo.png"
     }
   }
 }

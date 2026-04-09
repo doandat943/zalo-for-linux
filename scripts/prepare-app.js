@@ -233,6 +233,22 @@ async function extractAppAsar() {
   } catch (e) {
     console.error('❌ Failed to patch sqlite3:', e && e.message);
   }
+
+  // Copy icon for better Linux integration
+  try {
+    const iconSourcePath = path.join(APP_DIR, 'pc-dist', 'favicon-512x512.png');
+    const rootAssetsDir = path.join(__dirname, '..', 'assets', 'icons');
+    if (!fs.existsSync(rootAssetsDir)) {
+      fs.mkdirSync(rootAssetsDir, { recursive: true });
+    }
+    const iconTargetPath = path.join(rootAssetsDir, 'zalo.png');
+    if (fs.existsSync(iconSourcePath)) {
+      fs.copyFileSync(iconSourcePath, iconTargetPath);
+      console.log('✅ Icon copied to assets/icons/zalo.png');
+    }
+  } catch (e) {
+    console.error('❌ Failed to copy icon:', e && e.message);
+  }
 }
 
 function commandExists(command) {

@@ -2,6 +2,22 @@ const { app, BrowserWindow, Menu, Tray, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// Set AppUserModelId for better Linux/Windows taskbar integration
+const APP_ID = 'com.zalo.linux';
+if (app.setAppUserModelId) {
+  app.setAppUserModelId(APP_ID);
+}
+
+// Get global icon path for consistent use
+// In packaged app, icon is in extraResources (outside asar), accessible via process.resourcesPath
+// In development, use __dirname
+const getIconPath = () => {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'assets', 'icons', 'zalo.png');
+  }
+  return path.join(__dirname, 'assets', 'icons', 'zalo.png');
+};
+
 let tray = null;
 let mainWindow = null;
 let isAppQuitting = false;
@@ -21,6 +37,18 @@ app.on('browser-window-created', (_evt, win) => {
     // Set mainWindow only once (first window created)
     if (!mainWindow) {
       mainWindow = win;
+
+      // Ensure window has the correct icon
+      // Use a separate try-catch so any icon failure never prevents
+      // the close handler (hide-to-tray) from being registered below.
+      try {
+        const iconPath = getIconPath();
+        if (fs.existsSync(iconPath)) {
+          win.setIcon(iconPath);
+        }
+      } catch (iconErr) {
+        console.error('Failed to set window icon:', iconErr);
+      }
 
       // Set up tray context menu
       if (tray) {
@@ -92,19 +120,8 @@ app.on('browser-window-created', (_evt, win) => {
 app.once('ready', () => {
   try { Menu.setApplicationMenu(null); } catch (_) {}
 
-  // Create tray icon - handle different environments
-  let iconPath = null;
-  
-  // Check if we're running in a packaged app (AppImage)
-  const isPackaged = app.isPackaged;
-  
-  if (isPackaged) {
-    // In packaged app, icon is relative to AppImage mount point (process.cwd() is already in app/)
-    iconPath = path.join(process.cwd(), 'pc-dist', 'favicon-512x512.png');
-  } else {
-    // In development, use the original path
-    iconPath = path.join(__dirname, 'app', 'pc-dist', 'favicon-512x512.png');
-  }
+  // Create tray icon
+  const iconPath = getIconPath();
   
   if (iconPath && fs.existsSync(iconPath)) {
     try {
