@@ -111,13 +111,16 @@ jobs:
 
           ### Option 1: ZaDark Variant (Dark Mode + Privacy)
           ```bash
-          # 1. Download the AppImage
+          # 1. Install Gear Lever (if not already installed)
+          flatpak install flathub it.mijorus.gearlever -y
+
+          # 2. Download the AppImage
           wget https://github.com/${{ github.repository }}/releases/download/${{ steps.build.outputs.zalo_version }}/${{ steps.build.outputs.zadark_appimage_name }}
 
-          # 2. Install and integrate with Gear Lever
+          # 3. Install and integrate with Gear Lever
           flatpak run it.mijorus.gearlever --integrate ${{ steps.build.outputs.zadark_appimage_name }} --yes
 
-          # 3. Configure auto-updates
+          # 4. Configure auto-updates
           flatpak run it.mijorus.gearlever --set-update-source ~/AppImages/zalo.appimage \
               --manager GithubUpdater \
               repo_url=https://github.com/${{ github.repository }} \
@@ -127,13 +130,16 @@ jobs:
 
           ### Option 2: Original Variant (Standard)
           ```bash
-          # 1. Download the AppImage
+          # 1. Install Gear Lever (if not already installed)
+          flatpak install flathub it.mijorus.gearlever -y
+
+          # 2. Download the AppImage
           wget https://github.com/${{ github.repository }}/releases/download/${{ steps.build.outputs.zalo_version }}/${{ steps.build.outputs.original_appimage_name }}
 
-          # 2. Install and integrate with Gear Lever
+          # 3. Install and integrate with Gear Lever
           flatpak run it.mijorus.gearlever --integrate ${{ steps.build.outputs.original_appimage_name }} --yes
 
-          # 3. Configure auto-updates
+          # 4. Configure auto-updates
           flatpak run it.mijorus.gearlever --set-update-source ~/AppImages/zalo.appimage \
               --manager GithubUpdater \
               repo_url=https://github.com/${{ github.repository }} \
