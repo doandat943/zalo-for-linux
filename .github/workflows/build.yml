@@ -3,6 +3,10 @@ name: Build Zalo for Linux
 on:
   schedule:
     - cron: '0 0 * * *'
+  push:
+    branches:
+      - main
+      - feat/cli-automation
   workflow_dispatch:
     inputs:
       zalo_version:
