@@ -38,52 +38,45 @@ This project includes integrated [ZaDark](https://github.com/quaric/zadark), ZaD
 
 > **Note:** ZaDark is licensed under MPL-2.0 and is developed by [Quaric](https://zadark.com). The setup process automatically prepares ZaDark, and build process integrates it seamlessly!
 
-## 🚀 Quick Start
+## ⚡ Quick Start (CLI)
 
-### Usage
+### Option 1: ZaDark Variant (Dark Mode + Privacy)
 
-We strongly recommend using **Gear Lever** to run and manage the AppImage. It integrates the app perfectly into your system menu and handles auto-updates easily.
+```sh
+# 1. Download AppImage
+# ZADARK_WGET
+wget https://github.com/doandat943/zalo-for-linux/releases/download/v1.0.0/Zalo-1.0.0+ZaDark-1.0.0-abcdef.AppImage
 
-1.  Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
-2.  Install **Gear Lever** from [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever).
-3.  Open **Gear Lever**.
-4.  Click the **"Open"** button in the top-left corner and select the `.AppImage` file you downloaded.
-5.  The app will now appear in Gear Lever. Click the **"Unlock"** button, then choose **"Move to the app menu"** to integrate it into your system's application launcher.
+# 2. Integrate with Gear Lever
+# ZADARK_INTEGRATE
+flatpak run it.mijorus.gearlever --integrate Zalo-1.0.0+ZaDark-1.0.0-abcdef.AppImage --yes
 
-#### Enable Automatic Updates with Gear Lever
+# 3. Configure auto-updates
+flatpak run it.mijorus.gearlever --set-update-source ~/AppImages/zalo.appimage \
+    --manager GithubUpdater \
+    repo_url=https://github.com/doandat943/zalo-for-linux \
+    repo_filename="Zalo-*+ZaDark-*-*.AppImage" \
+    allow_prereleases=false
+```
 
-To enable automatic update checks for Zalo in Gear Lever, follow these steps:
+### Option 2: Original Variant (Standard)
 
-1.  Open **Gear Lever** and select **Zalo** from your list of applications.
-2.  Scroll down to the **Update Management** section.
-3.  For the **Source** field, select **GitHub**.
-4.  In the **Repo URL** field, paste:
-    ```text
-    https://github.com/doandat943/zalo-for-linux
-    ```
-5.  In the **Release file name** field, paste **one** of the following patterns, depending on which variant of Zalo you are using:
+```sh
+# 1. Download AppImage
+# ORIGINAL_WGET
+wget https://github.com/doandat943/zalo-for-linux/releases/download/v1.0.0/Zalo-1.0.0-abcdef.AppImage
 
-    ##### For Non-ZaDark Variant
+# 2. Integrate with Gear Lever
+# ORIGINAL_INTEGRATE
+flatpak run it.mijorus.gearlever --integrate Zalo-1.0.0-abcdef.AppImage --yes
 
-    ```text
-    Zalo-*-*.AppImage
-    ```
-
-    ##### For ZaDark Variant
-
-    ```text
-    Zalo-*+ZaDark-*-*.AppImage
-    ```
-
-6.  Click **Save**.
-7.  Finally, click the **Reload metadata** button (or refresh icon) to fetch the latest version information.
-
-#### How to Update Zalo
-
-Once the update source is configured, you can check for updates at any time by:
-
-1.  Opening **Gear Lever**.
-2.  Clicking the **Check for updates** button.
+# 3. Configure auto-updates
+flatpak run it.mijorus.gearlever --set-update-source ~/AppImages/zalo.appimage \
+    --manager GithubUpdater \
+    repo_url=https://github.com/doandat943/zalo-for-linux \
+    repo_filename="Zalo-*-*.AppImage" \
+    allow_prereleases=false
+```
 
 ### Build from Source
 
@@ -119,6 +112,7 @@ npm run main:build
 ```
 
 > ⚠️ Notes:
+>
 > - `npm run main` runs setup + build (equivalent to `SETUP=true BUILD=true node scripts/main.js`).
 > - `npm run main:setup` runs check-versions + download-dmg + prepare-zadark + prepare-app.
 > - `npm run main:build` runs build stage only.
@@ -128,7 +122,7 @@ The final AppImage will be in the `dist/` directory!
 ## 🛠️ Development Scripts
 
 | **Command** | **Description** |
-|---|---|
+| --- | --- |
 | `npm run main:setup` | `SETUP=true node scripts/main.js` (check + download + prepare) |
 | `npm run main:build` | `BUILD=true node scripts/main.js` (build AppImage) |
 | `npm run start` | Runs the app in development mode |
@@ -140,7 +134,7 @@ The final AppImage will be in the `dist/` directory!
 ## 🌍 Environment Variables
 
 | **Variable** | **Description** | **Example** |
-|---|---|---|
+| --- | --- | --- |
 | `ZALO_VERSION` | Specify exact Zalo version to download/extract | `ZALO_VERSION="25.11.20"` |
 | `ZADARK_VERSION` | Specify exact ZaDark version to download/integrate | `ZADARK_VERSION="v8.3.4"` |
 | `FORCE_DOWNLOAD` | Force re-download even if file exists | `FORCE_DOWNLOAD=true` |
@@ -194,7 +188,7 @@ When running `npm run prepare-app` with multiple DMG files in the `temp/` direct
 
 **Example interactive session:**
 
-```
+```text
 📋 Available DMG files:
    Use ↑↓ arrow keys to navigate, Enter to select, Esc to cancel
 
@@ -220,15 +214,16 @@ When running `npm run prepare-app` with multiple DMG files in the `temp/` direct
 
 This project is not a from-scratch rewrite of Zalo. It works by:
 
-1.  Downloading the official macOS `.dmg` file.
-2.  Using `7z` to extract the `app.asar` archive, which contains the main application logic written in JavaScript.
-3.  Removing incompatible native macOS files.
-4.  Wrapping the extracted application in a minimal, Linux-compatible Electron shell.
-5.  Using `electron-builder` to package everything into a single, portable `AppImage` file.
+1. Downloading the official macOS `.dmg` file.
+2. Using `7z` to extract the `app.asar` archive, which contains the main application logic written in JavaScript.
+3. Removing incompatible native macOS files.
+4. Wrapping the extracted application in a minimal, Linux-compatible Electron shell.
+5. Using `electron-builder` to package everything into a single, portable `AppImage` file.
 
 ## 🐛 Troubleshooting & Debugging
 
 If you encounter issues or want to inspect the app's behavior, you can easily open Chrome Developer Tools (DevTools) using the following methods:
+
 - **Keyboard Shortcut**: Press `Ctrl` + `Shift` + `I` while the Zalo window is focused.
 - **Tray Menu**: Right-click the Zalo tray icon and select **"Toggle DevTools"**.
 
@@ -236,10 +231,10 @@ If you encounter issues or want to inspect the app's behavior, you can easily op
 
 Contributions are welcome, especially for improving Linux integration, fixing bugs, and enhancing the build scripts.
 
-1.  Fork the repository.
-2.  Create your feature branch.
-3.  Commit your changes.
-4.  Submit a Pull Request.
+1. Fork the repository.
+2. Create your feature branch.
+3. Commit your changes.
+4. Submit a Pull Request.
 
 ## 📄 License
 

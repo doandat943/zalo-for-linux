@@ -54,7 +54,32 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: npm run main
+
+    - name: Update README version
+      if: steps.build.outputs.build == 'true'
+      run: |
+        VERSION=${{ steps.build.outputs.zalo_version }}
+        ZADARK_NAME=${{ steps.build.outputs.zadark_appimage_name }}
+        ORIGINAL_NAME=${{ steps.build.outputs.original_appimage_name }}
+        REPO=${{ github.repository }}
+
+        # Update ZaDark lines
+        sed -i "/# ZADARK_WGET/{n;s|wget .*|wget https://github.com/$REPO/releases/download/v$VERSION/$ZADARK_NAME|}" README.md
+        sed -i "/# ZADARK_INTEGRATE/{n;s|flatpak run .* --integrate .* --yes|flatpak run it.mijorus.gearlever --integrate $ZADARK_NAME --yes|}" README.md
+
+        # Update Original lines
+        sed -i "/# ORIGINAL_WGET/{n;s|wget .*|wget https://github.com/$REPO/releases/download/v$VERSION/$ORIGINAL_NAME|}" README.md
+        sed -i "/# ORIGINAL_INTEGRATE/{n;s|flatpak run .* --integrate .* --yes|flatpak run it.mijorus.gearlever --integrate $ORIGINAL_NAME --yes|}" README.md
         
+        # Setup git
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Commit and push if changed
+        git add README.md
+        git commit -m "chore: update README for version v$VERSION [skip ci]" || echo "No changes to commit"
+        git push
+
     - name: Upload Original AppImage artifact
       if: steps.build.outputs.build == 'true'
       uses: actions/upload-artifact@v4
@@ -78,16 +103,44 @@ jobs:
         tag_name: ${{ steps.build.outputs.zalo_version }}
         name: ${{ steps.build.outputs.zalo_version }}
         body: |
-          ## 🚀 How to use
-          
-          It is recommended to use [Gear Lever](https://github.com/mijorus/gearlever) to manage and integrate the AppImage.
+          ## 🚀 Quick Start (CLI)
 
+          ### Option 1: ZaDark Variant (Dark Mode + Privacy)
           ```bash
-          # Download the AppImage
+          # 1. Download the AppImage
           wget https://github.com/${{ github.repository }}/releases/download/${{ steps.build.outputs.zalo_version }}/${{ steps.build.outputs.zadark_appimage_name }}
 
-          # Install with Gear Lever
-          flatpak run it.mijorus.gearlever --integrate ${{ steps.build.outputs.zadark_appimage_name }}
+          # 2. Install and integrate with Gear Lever
+          flatpak run it.mijorus.gearlever --integrate ${{ steps.build.outputs.zadark_appimage_name }} --yes
+
+          # 3. Configure auto-updates
+          flatpak run it.mijorus.gearlever --set-update-source ~/AppImages/zalo.appimage \
+              --manager GithubUpdater \
+              repo_url=https://github.com/${{ github.repository }} \
+              repo_filename="Zalo-*+ZaDark-*-*.AppImage" \
+              allow_prereleases=false
+          ```
+
+          ### Option 2: Original Variant (Standard)
+          ```bash
+          # 1. Download the AppImage
+          wget https://github.com/${{ github.repository }}/releases/download/${{ steps.build.outputs.zalo_version }}/${{ steps.build.outputs.original_appimage_name }}
+
+          # 2. Install and integrate with Gear Lever
+          flatpak run it.mijorus.gearlever --integrate ${{ steps.build.outputs.original_appimage_name }} --yes
+
+          # 3. Configure auto-updates
+          flatpak run it.mijorus.gearlever --set-update-source ~/AppImages/zalo.appimage \
+              --manager GithubUpdater \
+              repo_url=https://github.com/${{ github.repository }} \
+              repo_filename="Zalo-*-*.AppImage" \
+              allow_prereleases=false
+          ```
+
+          ## 🔄 Automatic Updates
+          Gear Lever notifies you when a new version is available. To manually check and install updates for all integrated apps via CLI, use:
+          ```bash
+          flatpak run it.mijorus.gearlever --update --all --yes
           ```
 
           ## 📋 System Requirements
