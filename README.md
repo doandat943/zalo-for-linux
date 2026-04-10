@@ -43,15 +43,18 @@ This project includes integrated [ZaDark](https://github.com/quaric/zadark), ZaD
 ### Option 1: ZaDark Variant (Dark Mode + Privacy)
 
 ```sh
-# 1. Download AppImage
+# 1. Install Gear Lever (if not already installed)
+flatpak install flathub it.mijorus.gearlever -y
+
+# 2. Download AppImage
 # ZADARK_WGET
 wget https://github.com/doandat943/zalo-for-linux/releases/download/v1.0.0/Zalo-1.0.0+ZaDark-1.0.0-abcdef.AppImage
 
-# 2. Integrate with Gear Lever
+# 3. Integrate with Gear Lever
 # ZADARK_INTEGRATE
 flatpak run it.mijorus.gearlever --integrate Zalo-1.0.0+ZaDark-1.0.0-abcdef.AppImage --yes
 
-# 3. Configure auto-updates
+# 4. Configure auto-updates
 flatpak run it.mijorus.gearlever --set-update-source ~/AppImages/zalo.appimage \
     --manager GithubUpdater \
     repo_url=https://github.com/doandat943/zalo-for-linux \
@@ -62,15 +65,18 @@ flatpak run it.mijorus.gearlever --set-update-source ~/AppImages/zalo.appimage \
 ### Option 2: Original Variant (Standard)
 
 ```sh
-# 1. Download AppImage
+# 1. Install Gear Lever (if not already installed)
+flatpak install flathub it.mijorus.gearlever -y
+
+# 2. Download AppImage
 # ORIGINAL_WGET
 wget https://github.com/doandat943/zalo-for-linux/releases/download/v1.0.0/Zalo-1.0.0-abcdef.AppImage
 
-# 2. Integrate with Gear Lever
+# 3. Integrate with Gear Lever
 # ORIGINAL_INTEGRATE
 flatpak run it.mijorus.gearlever --integrate Zalo-1.0.0-abcdef.AppImage --yes
 
-# 3. Configure auto-updates
+# 4. Configure auto-updates
 flatpak run it.mijorus.gearlever --set-update-source ~/AppImages/zalo.appimage \
     --manager GithubUpdater \
     repo_url=https://github.com/doandat943/zalo-for-linux \
