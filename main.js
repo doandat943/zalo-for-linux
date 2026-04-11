@@ -37,6 +37,12 @@ app.on('before-quit', () => {
 // Hide native menu bar but keep title bar
 app.on('browser-window-created', (_evt, win) => {
   try {
+    // Set window icon for Taskbar/Dock integration
+    const iconPath = path.join(appDir, 'pc-dist', 'favicon-512x512.png');
+    if (fs.existsSync(iconPath)) {
+      win.setIcon(iconPath);
+    }
+
     // Set mainWindow only once (first window created by Zalo, not updateWin)
     if (!mainWindow) {
       mainWindow = win;
