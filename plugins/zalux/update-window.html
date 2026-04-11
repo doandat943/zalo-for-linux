@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zalux</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fff;
+      color: #081C36;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 20px 24px 0;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .header-logo {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      display: none;
+    }
+
+    .header-text h1 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #081C36;
+    }
+
+    .header-text p {
+      font-size: 12px;
+      color: #7589A3;
+      margin-top: 2px;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px;
+      background: #EEF0F4;
+      margin: 16px 24px;
+    }
+
+    /* ── Version rows ── */
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #7589A3;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 0 24px 10px;
+    }
+
+    .version-list {
+      flex: 1;
+      padding: 0 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .version-row {
+      display: flex;
+      align-items: center;
+      background: #F7F8FA;
+      border-radius: 10px;
+      padding: 12px 14px;
+      gap: 12px;
+    }
+
+    .version-row .label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #081C36;
+      width: 72px;
+      flex-shrink: 0;
+    }
+
+    .version-row .values {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #3D536B;
+      flex-wrap: wrap;
+    }
+
+    .version-row .values code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      background: #E8EEF5;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    .arrow {
+      color: #7589A3;
+      font-size: 14px;
+    }
+
+    .new-val code {
+      background: #E6F0FF !important;
+      color: #0068FF !important;
+      font-weight: 600;
+    }
+
+    .status-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .status-icon.ok {
+      background: #E6F9EE;
+    }
+
+    .status-icon.outdated {
+      background: #FFF3E0;
+    }
+
+    .status-icon.unknown {
+      background: #F0F0F0;
+    }
+
+    /* ── Loading state ── */
+    .loading-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: #7589A3;
+      font-size: 13px;
+    }
+
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid #E8EEF5;
+      border-top-color: #0068FF;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error state ── */
+    .error-banner {
+      margin: 0 24px;
+      padding: 10px 14px;
+      background: #FFF1F0;
+      border: 1px solid #FFA39E;
+      border-radius: 8px;
+      color: #CF1322;
+      font-size: 12px;
+      display: none;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Non-AppImage notice */
+    .notice {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #7589A3;
+      background: #F7F8FA;
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+
+    /* Progress bar */
+    .progress-wrap {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .progress-wrap.visible { display: flex; }
+
+    .progress-track {
+      width: 100%;
+      height: 5px;
+      background: #E8EEF5;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #0068FF;
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.25s ease;
+    }
+
+    .progress-label {
+      font-size: 11px;
+      color: #7589A3;
+      text-align: center;
+    }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      flex: 1;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 0;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    .btn-primary {
+      background: #0068FF;
+      color: #fff;
+    }
+
+    .btn-primary:hover:not(:disabled) { background: #0059D6; }
+    .btn-primary:active:not(:disabled) { background: #004CBC; }
+    .btn-primary:disabled {
+      background: #B0C4D8;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #F0F4F8;
+      color: #3D536B;
+    }
+
+    .btn-secondary:hover { background: #E4EAF2; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <img class="header-logo" id="logo" src="" alt="Zalo" />
+    <div class="header-text">
+      <h1>Zalux</h1>
+      <p id="subtitle">Kiểm tra phiên bản Zalo cho Linux</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Loading -->
+  <div class="loading-state" id="loadingState">
+    <div class="spinner"></div>
+    <span>Đang kiểm tra phiên bản…</span>
+  </div>
+
+  <!-- Content (hidden until data received) -->
+  <div id="content" style="display:none; flex:1; flex-direction:column;">
+    <div class="section-label">Thông tin phiên bản</div>
+    <div class="version-list" id="versionList">
+      <!-- rows injected by JS -->
+    </div>
+    <div class="error-banner" id="errorBanner"></div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer" id="footer" style="display:none;">
+    <div class="notice" id="noticeNonAppImage">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7589A3" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      Cập nhật chỉ khả dụng khi chạy từ AppImage
+    </div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">Đang tải về…</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btnRefresh">Kiểm tra lại</button>
+      <button class="btn btn-primary" id="btnUpdate" disabled>Cập nhật</button>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    const $ = (id) => document.getElementById(id);
+
+    // ── State ──────────────────────────────────────────────────────────────
+    let _isAppImage  = false;
+    let _needsUpdate = false;
+    let _asset       = null;
+
+    // ── Loading → Content transition ───────────────────────────────────────
+    function showContent() {
+      $('loadingState').style.display = 'none';
+      $('content').style.display      = 'flex';
+      $('footer').style.display       = 'block';
+    }
+
+    function showLoading() {
+      $('loadingState').style.display = '';
+      $('content').style.display      = 'none';
+      $('footer').style.display       = 'none';
+    }
+
+    // ── Build a version row ─────────────────────────────────────────────────
+    function makeRow(label, localVal, remoteVal) {
+      const isOk       = !remoteVal || localVal === remoteVal;
+      const statusIcon = isOk
+        ? `<div class="status-icon ok">
+             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#27AE60" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+           </div>`
+        : `<div class="status-icon outdated">
+             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F39C12" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+           </div>`;
+
+      const valHtml = isOk
+        ? `<code>${localVal || '—'}</code>`
+        : `<code>${localVal || '—'}</code>
+           <span class="arrow">→</span>
+           <span class="new-val"><code>${remoteVal}</code></span>`;
+
+      return `
+        <div class="version-row">
+          ${statusIcon}
+          <div class="label">${label}</div>
+          <div class="values">${valHtml}</div>
+        </div>
+      `;
+    }
+
+    // ── Receive initial data ────────────────────────────────────────────────
+    ipcRenderer.on('version-checking', () => showLoading());
+
+    ipcRenderer.on('version-info', (_e, info) => {
+      _isAppImage  = info.isAppImage;
+      _needsUpdate = info.needsUpdate;
+
+      // Logo
+      if (info.logoPath) {
+        const logo = $('logo');
+        logo.src = info.logoPath;
+        logo.style.display = 'block';
+      }
+
+      // Subtitle
+      if (!info.isAppImage) {
+        $('subtitle').textContent = 'Đang chạy ở chế độ phát triển';
+      } else if (info.needsUpdate) {
+        $('subtitle').textContent = 'Có bản cập nhật mới!';
+      } else if (info.error) {
+        $('subtitle').textContent = 'Không thể kiểm tra phiên bản';
+      } else {
+        $('subtitle').textContent = 'Bạn đang dùng phiên bản mới nhất';
+      }
+
+      // Version rows
+      const list = $('versionList');
+      list.innerHTML = '';
+
+      const localCommit  = info.localCommit  ? info.localCommit.substring(0, 7)  : null;
+      const remoteCommit = info.remoteCommit ? info.remoteCommit.substring(0, 7) : null;
+
+      list.innerHTML += makeRow('Zalo',   info.localVersion, info.remoteVersion);
+      if (info.localZadark || info.remoteZadark) {
+        list.innerHTML += makeRow('ZaDark', info.localZadark, info.remoteZadark);
+      }
+      list.innerHTML += makeRow('Commit', localCommit, remoteCommit !== localCommit ? remoteCommit : null);
+
+      // Error banner
+      const banner = $('errorBanner');
+      if (info.error) {
+        banner.textContent = `⚠ ${info.error}`;
+        banner.style.display = 'block';
+      } else {
+        banner.style.display = 'none';
+      }
+
+      // Non-AppImage notice
+      $('noticeNonAppImage').style.display = info.isAppImage ? 'none' : 'flex';
+
+      // Update button state
+      $('btnUpdate').disabled = !(info.isAppImage && info.needsUpdate);
+      $('btnUpdate').textContent = 'Cập nhật';
+
+      showContent();
+    });
+
+    // ── Buttons ────────────────────────────────────────────────────────────
+    $('btnRefresh').addEventListener('click', () => {
+      showLoading();
+      ipcRenderer.send('zalux-refresh');
+    });
+
+    $('btnUpdate').addEventListener('click', () => {
+      $('btnUpdate').disabled = true;
+      $('btnRefresh').disabled = true;
+      ipcRenderer.send('zalux-start-download');
+    });
+
+    // ── Download progress ──────────────────────────────────────────────────
+    ipcRenderer.on('download-progress', (_e, percent) => {
+      const wrap  = $('progressWrap');
+      const fill  = $('progressFill');
+      const label = $('progressLabel');
+
+      wrap.classList.add('visible');
+      fill.style.width   = percent + '%';
+      label.textContent  = `Đang tải về… ${Math.round(percent)}%`;
+    });
+
+    ipcRenderer.on('download-done', () => {
+      $('progressFill').style.width = '100%';
+      $('progressLabel').textContent = 'Tải về hoàn tất! Đang cài đặt…';
+    });
+
+    ipcRenderer.on('download-error', (_e, msg) => {
+      $('progressWrap').classList.remove('visible');
+      const banner = $('errorBanner');
+      banner.textContent = `⚠ ${msg}`;
+      banner.style.display = 'block';
+      $('btnUpdate').disabled  = !(_isAppImage && _needsUpdate);
+      $('btnRefresh').disabled = false;
+    });
+  </script>
+</body>
+</html>

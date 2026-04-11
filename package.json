@@ -47,6 +47,7 @@
     "files": [
       "main.js",
       "package.json",
+      "plugins/zalux/**/*",
       "assets/**/*"
     ],
     "extraFiles": [
@@ -60,7 +61,7 @@
         ]
       },
       {
-        "from": "update-window.html",
+        "from": "plugins/zalux/update-window.html",
         "to": "resources/update-window.html"
       }
     ],
