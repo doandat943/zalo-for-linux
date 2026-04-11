@@ -245,6 +245,12 @@ async function extractAppAsar() {
     if (fs.existsSync(iconSourcePath)) {
       fs.copyFileSync(iconSourcePath, iconTargetPath);
       console.log('✅ Icon copied to assets/icons/zalo.png');
+    } else {
+      console.warn(`⚠️  Icon source not found: ${iconSourcePath}`);
+      if (fs.existsSync(iconTargetPath)) {
+        fs.rmSync(iconTargetPath, { force: true });
+        console.log('🗑️  Removed stale icon: assets/icons/zalo.png');
+      }
     }
   } catch (e) {
     console.error('❌ Failed to copy icon:', e && e.message);
