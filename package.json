@@ -63,6 +63,10 @@
           "!node_modules",
           "!package-lock.json"
         ]
+      },
+      {
+        "from": "update-window.html",
+        "to": "resources/update-window.html"
       }
     ],
     "asarUnpack": [

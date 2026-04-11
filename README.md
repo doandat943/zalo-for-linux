@@ -42,48 +42,15 @@ This project includes integrated [ZaDark](https://github.com/quaric/zadark), ZaD
 
 ### Usage
 
-We strongly recommend using **Gear Lever** to run and manage the AppImage. It integrates the app perfectly into your system menu and handles auto-updates easily.
+We strongly recommend using **Gear Lever** to integrate the AppImage perfectly into your system menu.
+
+**Note:** Zalo for Linux comes with a built-in updater. Whenever a new release is available, you will be prompted within the Zalo app to download and apply the update seamlessly without leaving the application.
 
 1.  Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
 2.  Install **Gear Lever** from [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever).
 3.  Open **Gear Lever**.
 4.  Click the **"Open"** button in the top-left corner and select the `.AppImage` file you downloaded.
 5.  The app will now appear in Gear Lever. Click the **"Unlock"** button, then choose **"Move to the app menu"** to integrate it into your system's application launcher.
-
-#### Enable Automatic Updates with Gear Lever
-
-To enable automatic update checks for Zalo in Gear Lever, follow these steps:
-
-1.  Open **Gear Lever** and select **Zalo** from your list of applications.
-2.  Scroll down to the **Update Management** section.
-3.  For the **Source** field, select **GitHub**.
-4.  In the **Repo URL** field, paste:
-    ```text
-    https://github.com/doandat943/zalo-for-linux
-    ```
-5.  In the **Release file name** field, paste **one** of the following patterns, depending on which variant of Zalo you are using:
-
-    ##### For Non-ZaDark Variant
-
-    ```text
-    Zalo-*-*.AppImage
-    ```
-
-    ##### For ZaDark Variant
-
-    ```text
-    Zalo-*+ZaDark-*-*.AppImage
-    ```
-
-6.  Click **Save**.
-7.  Finally, click the **Reload metadata** button (or refresh icon) to fetch the latest version information.
-
-#### How to Update Zalo
-
-Once the update source is configured, you can check for updates at any time by:
-
-1.  Opening **Gear Lever**.
-2.  Clicking the **Check for updates** button.
 
 ### Build from Source
 

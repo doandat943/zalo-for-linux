@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zalo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fff;
+      color: #081C36;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* Draggable title bar */
+    .titlebar {
+      height: 36px;
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+    }
+
+    .container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 40px 40px;
+      gap: 0;
+    }
+
+    .logo {
+      width: 80px;
+      height: auto;
+      margin-bottom: 32px;
+    }
+
+    .warning-icon {
+      width: 72px;
+      height: 72px;
+      margin-bottom: 20px;
+    }
+
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #081C36;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .desc {
+      font-size: 14px;
+      color: #7589A3;
+      text-align: center;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+
+    .progress-container {
+      width: 100%;
+      max-width: 260px;
+      margin-bottom: 32px;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .progress-container.visible { display: flex; }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 6px;
+      background: #E5E7EB;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #0068FF;
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .progress-label {
+      font-size: 12px;
+      color: #7589A3;
+      text-align: center;
+    }
+
+    .btn {
+      -webkit-app-region: no-drag;
+      background: #0068FF;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 40px;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+      min-width: 200px;
+      text-align: center;
+    }
+    .btn:hover { background: #0059D6; }
+    .btn:active { background: #004CBC; }
+    .btn:disabled { background: #B0C4D8; cursor: not-allowed; }
+
+    .btn-text { display: block; }
+    
+    .error-box {
+      width: 100%;
+      max-width: 260px;
+      margin-bottom: 20px;
+      padding: 12px;
+      background: #FFF1F0;
+      border: 1px solid #FFA39E;
+      border-radius: 6px;
+      color: #CF1322;
+      font-size: 13px;
+      text-align: center;
+      display: none;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar"></div>
+  <div class="container">
+    <!-- Zalo logo will be injected by preload -->
+    <img class="logo" id="logo" src="" alt="Zalo" style="display:none" />
+
+    <!-- Warning triangle SVG -->
+    <svg class="warning-icon" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M31.608 11.334c1.961-3.392 6.823-3.392 8.784 0l23.05 39.9C65.365 54.57 63.003 58 58.05 58H13.95c-4.95 0-7.316-3.429-5.392-6.766l23.05-39.9z" fill="#F5A623"/>
+      <rect x="34" y="25" width="4" height="16" rx="2" fill="#fff"/>
+      <rect x="34" y="44" width="4" height="4" rx="2" fill="#fff"/>
+    </svg>
+
+    <div class="title" id="title">Yêu cầu cập nhật ứng dụng</div>
+    <div class="desc" id="desc">Phiên bản Zalo PC của bạn đã cũ. Vui lòng cập nhật lên phiên bản mới nhất để tiếp tục sử dụng.</div>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-label" id="progressLabel">Đang tải về... 0%</div>
+    </div>
+
+    <button class="btn" id="downloadBtn">
+      <span class="btn-text">Cập nhật</span>
+    </button>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    // Receive metadata from main process
+    ipcRenderer.on('update-info', (event, info) => {
+      if (info.logoPath) {
+        const logo = document.getElementById('logo');
+        logo.src = info.logoPath;
+        logo.style.display = 'block';
+      }
+      if (info.version) {
+        let descHtml = `Bản cập nhật mới đã sẵn sàng. Bạn có muốn cài đặt không?`;
+        let changesHtml = `<div style="text-align: left; margin-top: 12px; font-size: 13px; color: #556; background: #f8f9fa; padding: 10px; border-radius: 6px;">`;
+        
+        // Zalo Version
+        if (info.localVersion !== info.remoteVersion) {
+          changesHtml += `• Zalo: ${info.localVersion} → <b style="color:#0068FF">${info.remoteVersion}</b><br>`;
+        } else {
+          changesHtml += `• Zalo: ${info.localVersion}<br>`;
+        }
+        
+        // ZaDark Version
+        if (info.localZadark || info.remoteZadark) {
+          if (info.localZadark !== info.remoteZadark) {
+            changesHtml += `• ZaDark: ${info.localZadark || 'Không'} → <b style="color:#0068FF">${info.remoteZadark || 'Không'}</b><br>`;
+          } else {
+            changesHtml += `• ZaDark: ${info.localZadark}<br>`;
+          }
+        }
+        
+        // Commit Hash
+        const shortLocal = info.localCommit ? info.localCommit.substring(0, 7) : 'unknown';
+        const shortRemote = info.remoteCommit ? info.remoteCommit.substring(0, 7) : 'unknown';
+        
+        if (shortLocal !== shortRemote) {
+           changesHtml += `• Commit: <code>${shortLocal}</code> → <code style="color:#0068FF"><b>${shortRemote}</b></code>`;
+        } else {
+           changesHtml += `• Commit: <code>${shortLocal}</code>`;
+        }
+
+        changesHtml += `</div>`;
+        document.getElementById('desc').innerHTML = descHtml + changesHtml;
+      }
+    });
+
+    // Download progress
+    ipcRenderer.on('download-progress', (event, percent) => {
+      const container = document.getElementById('progressContainer');
+      const fill = document.getElementById('progressFill');
+      const label = document.getElementById('progressLabel');
+      const btn = document.getElementById('downloadBtn');
+
+      const errorBox = document.getElementById('errorBox');
+
+      errorBox.style.display = 'none';
+      container.classList.add('visible');
+      fill.style.width = percent + '%';
+      label.textContent = `Đang tải về... ${Math.round(percent)}%`;
+      btn.disabled = true;
+    });
+
+    ipcRenderer.on('download-done', () => {
+      const container = document.getElementById('progressContainer');
+      const fill = document.getElementById('progressFill');
+      const label = document.getElementById('progressLabel');
+      const btn = document.getElementById('downloadBtn');
+
+      fill.style.width = '100%';
+      label.textContent = 'Tải về hoàn tất! Đang cài đặt...';
+      btn.disabled = true;
+    });
+
+    ipcRenderer.on('update-error', (event, message) => {
+      const container = document.getElementById('progressContainer');
+      const errorBox = document.getElementById('errorBox');
+      const btn = document.getElementById('downloadBtn');
+
+      container.classList.remove('visible');
+      errorBox.textContent = message;
+      errorBox.style.display = 'block';
+      btn.disabled = false;
+      document.querySelector('.btn-text').textContent = 'Thử lại';
+    });
+
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      ipcRenderer.send('updater-download-clicked');
+    });
+  </script>
+</body>
+</html>

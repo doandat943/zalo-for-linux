@@ -141,7 +141,8 @@ async function buildZaDarkAssets() {
     console.log('⚙️  Building PC assets...');
     execSync('npm run build', {
       cwd: ZADARK_DIR,
-      stdio: 'pipe'
+      stdio: 'pipe',
+      env: { ...process.env, NODE_ENV: 'production' }
     });
 
     console.log('✅ ZaDark PC assets built successfully');
