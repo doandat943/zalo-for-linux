@@ -59,10 +59,6 @@
           "!node_modules",
           "!package-lock.json"
         ]
-      },
-      {
-        "from": "plugins/zalux/update-window.html",
-        "to": "resources/update-window.html"
       }
     ],
     "asarUnpack": [

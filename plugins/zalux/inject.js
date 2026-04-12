@@ -1,13 +1,13 @@
 /**
- * updater-inject.js
+ * inject.js
  * This script is injected into the Zalo renderer via executeJavaScript.
  * It periodically checks for the .nav__tabs__bottom container and,
- * once found on the main Zalo page, inserts the Linux Updater icon button.
+ * once found on the main Zalo page, inserts the Zalux sidebar button.
  */
 
 setInterval(() => {
   const bottomNav = document.querySelector('.nav__tabs__bottom');
-  if (!bottomNav || document.getElementById('zalo-linux-updater') || !location.href.includes('index.html')) {
+  if (!bottomNav || document.getElementById('zalux-btn') || !location.href.includes('index.html')) {
     return;
   }
 
@@ -47,8 +47,8 @@ setInterval(() => {
   ].join('; ');
 
   const btn = document.createElement('div');
-  btn.id = 'zalo-linux-updater';
-  btn.title = 'Cập nhật Zalo cho Linux';
+  btn.id = 'zalux-btn';
+  btn.title = 'Zalux';
   btn.style.cssText = [
     'width: 64px',
     'height: 64px',
@@ -67,7 +67,7 @@ setInterval(() => {
 
   btn.onclick = () => {
     const oldTitle = document.title;
-    document.title = 'ZALO_UPDATER_TRIGGER';
+    document.title = 'ZALUX_TRIGGER';
     setTimeout(() => document.title = oldTitle, 100);
   };
 

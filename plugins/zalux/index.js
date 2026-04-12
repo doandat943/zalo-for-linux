@@ -61,7 +61,7 @@ function register({ app, ipcMain, BrowserWindow, appDir }) {
 function _onWindowCreated(win) {
   // Intercept the document.title trick from the inject script
   win.on('page-title-updated', (event, title) => {
-    if (title !== 'ZALO_UPDATER_TRIGGER') return;
+    if (title !== 'ZALUX_TRIGGER') return;
     event.preventDefault();
     _openVersionWindow();
   });
@@ -97,9 +97,7 @@ function _runCheck(openWindowAfter) {
 // ---------------------------------------------------------------------------
 
 function _openVersionWindow() {
-  const winPath = _isPackaged
-    ? path.join(process.resourcesPath, 'update-window.html')
-    : path.join(__dirname, 'update-window.html');
+  const winPath = path.join(__dirname, 'index.html');
 
   const versionWin = new _BrowserWindow({
     width: 420,
@@ -194,7 +192,7 @@ function _sendVersionInfo(win, result) {
 // ---------------------------------------------------------------------------
 
 function getInjectScript() {
-  return fs.readFileSync(path.join(__dirname, 'updater-inject.js'), 'utf8');
+  return fs.readFileSync(path.join(__dirname, 'inject.js'), 'utf8');
 }
 
 module.exports = { register, getInjectScript };
