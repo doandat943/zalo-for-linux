@@ -139,7 +139,7 @@ async function buildZaDarkAssets() {
 
     // Build PC version
     console.log('⚙️  Building PC assets...');
-    execSync('npm run build', {
+    execSync('npx gulp build', {
       cwd: ZADARK_DIR,
       stdio: 'pipe',
       env: { ...process.env, NODE_ENV: 'production' }
