@@ -100,6 +100,8 @@ function _openVersionWindow() {
   const winPath = path.join(__dirname, 'index.html');
 
   const versionWin = new _BrowserWindow({
+    parent: _mainWindow,
+    modal: true,
     width: 420,
     height: 500,
     resizable: false,
@@ -108,7 +110,6 @@ function _openVersionWindow() {
     frame: true,
     title: 'Zalux',
     center: true,
-    alwaysOnTop: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
