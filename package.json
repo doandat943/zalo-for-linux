@@ -70,6 +70,9 @@
     "linux": {
       "target": "AppImage",
       "category": "Network",
+      "desktop": { "entry": {
+        "StartupWMClass": "zalo-for-linux" }
+      },
       "synopsis": "Zalo messaging app for Linux",
       "description": "Unofficial port of Zalo messaging application for Linux systems.",
       "icon": "app/pc-dist/favicon-512x512.png"
