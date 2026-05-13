@@ -24,7 +24,8 @@ let isAppQuitting = false;
 // Plugins
 // ---------------------------------------------------------------------------
 
-const zalux = require('./plugins/zalux');
+const zaluxPlugin = require('./plugins/zalux');
+const screenshotPlugin = require('./plugins/screenshot');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,6 +72,7 @@ app.on('browser-window-created', (_evt, win) => {
     // Track the main Zalo window for tray menu
     if (!mainWindow && win.getTitle() !== 'Shared Worker') {
       mainWindow = win;
+      screenshotPlugin.setMainWindow(win);
 
       if (tray) {
         const contextMenu = Menu.buildFromTemplate([
@@ -146,8 +148,9 @@ app.once('ready', () => {
     }
   }
 
-  // Register Zalux Updater plugin
-  zalux.register({ app, ipcMain, BrowserWindow, appDir });
+// Register plugins
+  zaluxPlugin.register({ app, ipcMain, BrowserWindow, appDir });
+  screenshotPlugin.register({ ipcMain });
 });
 
 // ---------------------------------------------------------------------------
