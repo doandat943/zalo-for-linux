@@ -233,7 +233,19 @@ async function extractAppAsar() {
   } catch (e) {
     console.error('❌ Failed to patch sqlite3:', e && e.message);
   }
-
+  try {
+    console.log('🔧 Patching main-dist/main.js to support Linux platform...');
+    const dbCrossbindingFilePath = path.join(APP_DIR, 'main-dist', 'main.js');
+    let content = fs.readFileSync(dbCrossbindingFilePath, 'utf-8');
+    if (content.includes(`case"LINUX":return 25;`)) {
+          content = content.replace(`case"LINUX":return 25;`, 
+              `case"LINUX":return 24;`)
+              fs.writeFileSync(dbCrossbindingFilePath, content, 'utf-8');
+          console.log("mains-dist/main.js Patched successfully.");
+    }
+  } catch (e) {
+    console.error('❌ Failed to patch main-dist/main.js:', e && e.message);
+  }
   try {
     await require('./patch-shared-worker.js').main();
   } catch (e) {
