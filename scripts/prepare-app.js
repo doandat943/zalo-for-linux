@@ -218,7 +218,7 @@ async function extractAppAsar() {
   // On Linux, loading these causes "invalid ELF header" errors, which freezes the login screen (>= 25.12.11).
   // We replace them with a real Linux binary from the project's sqlite3 devDependency.
   try {
-    const sqliteTargetDir = path.join(__dirname, '..', 'native', 'nativelibs', 'sqlite3', 'binding', 'napi-v6-linux-x64');
+    const sqliteTargetDir = path.join(APP_DIR, 'native', 'nativelibs', 'sqlite3', 'binding', 'napi-v6-linux-x64');
     fs.mkdirSync(sqliteTargetDir, { recursive: true });
 
     const targetNodePath = path.join(sqliteTargetDir, 'node_sqlite3.node');
@@ -262,7 +262,7 @@ async function extractAppAsar() {
   // Patch db-cross-v4's JS wrapper to load the Linux native addon instead of the macOS one
   try {
     console.log('🔧 Patching db-cross-v4 binding.js to support Linux...');
-    const dbCrossbindingFilePath = path.join(__dirname, '..', 'app', 'native', 'nativelibs', 'db-cross-v4', 'dist' , 'binding.js');
+    const dbCrossbindingFilePath = path.join(APP_DIR, 'native', 'nativelibs', 'db-cross-v4', 'dist' , 'binding.js');
     let content = fs.readFileSync(dbCrossbindingFilePath, 'utf-8');
     if (content.includes(`else {\n    if (process.arch === 'x64') {`)) {
           content = content.replace(`else {\n    if (process.arch === 'x64') {`, 
