@@ -218,7 +218,7 @@ async function extractAppAsar() {
   // On Linux, loading these causes "invalid ELF header" errors, which freezes the login screen (>= 25.12.11).
   // We replace them with a real Linux binary from the project's sqlite3 devDependency.
   try {
-    const sqliteTargetDir = path.join(APP_DIR, 'native', 'nativelibs', 'sqlite3', 'binding', 'napi-v6-linux-x64');
+    const sqliteTargetDir = path.join(__dirname, '..', 'native', 'nativelibs', 'sqlite3', 'binding', 'napi-v6-linux-x64');
     fs.mkdirSync(sqliteTargetDir, { recursive: true });
 
     const targetNodePath = path.join(sqliteTargetDir, 'node_sqlite3.node');
@@ -232,6 +232,46 @@ async function extractAppAsar() {
     }
   } catch (e) {
     console.error('❌ Failed to patch sqlite3:', e && e.message);
+  }
+
+  try {
+    await require('./patch-shared-worker.js').main();
+  } catch (e) {
+    console.error('❌ Failed to patch shared worker:', e && e.message);
+  }
+
+  try {
+    await require('./patch-main-startup.js').main();
+  } catch (e) {
+    console.error('❌ Failed to patch main-startup:', e && e.message);
+  }
+  // Copy db-cross-v4.node
+  try {
+    console.log('🔧 Copying db-cross-v4.node for Linux support...');
+    const dbCrossTargetDir = path.join(__dirname, '..', 'app', 'native', 'nativelibs', 'db-cross-v4', 'prebuilt', 'linux', 'electron_x86_64');
+    fs.mkdirSync(dbCrossTargetDir, { recursive: true });
+    
+    const targetNodePath = path.join(dbCrossTargetDir, 'db-cross-v4-native.node');
+    const sourceNodePath = path.join(__dirname, '..', 'db-cross-v4-native.node');
+    fs.copyFileSync(sourceNodePath, targetNodePath);
+    console.log('✅ db-cross-v4.node copied successfully!');
+  } catch (e) {
+    console.error('❌ Failed to copy db-cross-v4.node:', e && e.message);
+  }
+
+  // Patch db-cross-v4's JS wrapper to load the Linux native addon instead of the macOS one
+  try {
+    console.log('🔧 Patching db-cross-v4 binding.js to support Linux...');
+    const dbCrossbindingFilePath = path.join(__dirname, '..', 'app', 'native', 'nativelibs', 'db-cross-v4', 'dist' , 'binding.js');
+    let content = fs.readFileSync(dbCrossbindingFilePath, 'utf-8');
+    if (content.includes(`else {\n    if (process.arch === 'x64') {`)) {
+          content = content.replace(`else {\n    if (process.arch === 'x64') {`, 
+              `else if (process.platform === 'linux') {\n    if (process.arch === 'x64') {\n        addon = require('../prebuilt/linux/electron_x86_64/db-cross-v4-native.node');\n    }\n    else {\n        addon = require('../prebuilt/linux/electron_x86/db-cross-v4-native.node');\n    }\n}\nelse {\n    if (process.arch === 'x64') {`)
+              fs.writeFileSync(dbCrossbindingFilePath, content, 'utf-8');
+          console.log("db-cross-v4 binding.js Patched successfully.");
+  }
+  } catch (e) {
+    console.error('❌ Failed to patch db-cross-v4 binding.js:', e && e.message);
   }
 }
 
