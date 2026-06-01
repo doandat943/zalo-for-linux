@@ -4,14 +4,16 @@
 
 An unofficial, community-driven port of the Zalo desktop application for **Linux only**, created by repackaging the official macOS client into a standard AppImage with integrated ZaDark.
 
-Thanks **realdtn2** for the solution: [realdtn2/zalo-linux-unofficial-2024](https://github.com/realdtn2/zalo-linux-unofficial-2024).
+Thanks **realdtn2** for the solution: [realdtn2/zalo-linux-2026](https://github.com/realdtn2/zalo-linux-2026).
 
 ## ⚠️ Important: Known Issues
 
-- **Message Synchronization (E2EE):** Zalo uses a proprietary native module (`db-cross-v4`) for End-to-End Encryption operations. This module only ships as a macOS binary (Mach-O) and cannot be loaded on Linux, so E2EE message sync will fail. **Workaround:** use **Wine** to run the Windows version of Zalo to perform the initial data sync, then migrate the data to this Linux version. For more details, see [issue #1](https://github.com/realdtn2/zalo-linux-unofficial-2024/issues/1) and [issue #2](https://github.com/realdtn2/zalo-linux-unofficial-2024/issues/2).
 - **Can't make or receive calls:** The call module (`zcall`) only ships as a macOS native binary.
-- **Can't see message reactions:** You won't see reactions in the UI (no badges/counters), but reacting still works and others can see your reaction.
-- **No Photos/Videos, Files and Links on the Conversation Info panel** for some reason (you can still view images/videos, files or links normally, they just don't appear on the conversation info panel).
+- **System/Auto Theme not working:** The app does not follow the system's dark/light mode. Both ZaDark and Zalo ignore `prefers-color-scheme`. See [issue #22](https://github.com/doandat943/zalo-for-linux/issues/22).
+- **Can't paste images from clipboard:** Image files (`.png`, `.jpg`, `.jpeg`, …) cannot be pasted into chats via `Ctrl+V`. Other file formats (`.docx`, `.pdf`, `.mp4`, …) paste normally. See [issue #23](https://github.com/doandat943/zalo-for-linux/issues/23).
+- **✅ Fixed: Message Synchronization (E2EE)** - Thanks to [@realdtn2](https://github.com/realdtn2) for reimplementing `db-cross-v4` with C++. E2EE message sync now works on Linux without any Wine workaround. Thanks to [@DMKha2k7](https://github.com/DMKha2k7) for the PR. See [PR #24](https://github.com/doandat943/zalo-for-linux/pull/24) and [issue #15](https://github.com/doandat943/zalo-for-linux/issues/15).
+- **✅ Fixed: No Photos/Videos, Files and Links on the Conversation Info panel** - Caused by the missing `db-cross-v4` module.
+- **✅ Fixed: Can't see message reactions** - Caused by the missing `db-cross-v4` module.
 - **✅ Fixed: Screenshot without/with Zalo window button** - Uses native Linux screenshot tools (see [issue #19](https://github.com/doandat943/zalo-for-linux/issues/19)). Supported tools: deepin-screen-recorder, spectacle, flameshot, gnome-screenshot, xfce4-screenshooter, mate-screenshot, ksnapshot, scrot. Thanks to [@hthienloc](https://github.com/hthienloc) for the solution.
 - **✅ Fixed: No title bar with minimize/maximize/close buttons** - Thanks to [@NanKillBro](https://github.com/NanKillBro) for the solution. For more details, see [issue #4](https://github.com/doandat943/zalo-for-linux/issues/4)
 - **✅ Fixed: No tray menu icon**
