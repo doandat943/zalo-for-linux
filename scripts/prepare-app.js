@@ -194,45 +194,17 @@ async function extractAppAsar() {
 
   fs.renameSync(packageJsonPath, packageJsonBakPath);
 
-  // Patch main.js to enable title bar (T,frame:!1 -> T,frame:!0)
-  try {
-    const mainJsPath = path.join(APP_DIR, 'main-dist', 'main.js');
-    if (fs.existsSync(mainJsPath)) {
-      let mainContent = fs.readFileSync(mainJsPath, 'utf8');
+  // Patch main.js for Linux
+  const { main: patchTitlebar } = require('./patches/patch-titlebar');
+  await patchTitlebar();
 
-      if (mainContent.includes('T,frame:!1')) {
-        mainContent = mainContent.replace(/T,frame:!1/g, 'T,frame:!0');
-        fs.writeFileSync(mainJsPath, mainContent, 'utf8');
-        console.log('✅ Patched T,frame:!1 -> T,frame:!0 (title bar enabled)');
-      } else {
-        console.log('⚠️  Pattern T,frame:!1 not found in main.js, skipping patch');
-      }
-    } else {
-      console.log('⚠️  main.js not present, skipping patch');
-    }
-  } catch (e) {
-    console.error('❌ Failed to patch main.js:', e && e.message);
-  }
+  // Patch sqlite3 for Linux
+  const { main: patchSqlite3 } = require('./patches/patch-sqlite3');
+  await patchSqlite3();
 
-  // Patch sqlite3: The original DMG only ships macOS (Mach-O) binaries for sqlite3.
-  // On Linux, loading these causes "invalid ELF header" errors, which freezes the login screen (>= 25.12.11).
-  // We replace them with a real Linux binary from the project's sqlite3 devDependency.
-  try {
-    const sqliteTargetDir = path.join(APP_DIR, 'native', 'nativelibs', 'sqlite3', 'binding', 'napi-v6-linux-x64');
-    fs.mkdirSync(sqliteTargetDir, { recursive: true });
-
-    const targetNodePath = path.join(sqliteTargetDir, 'node_sqlite3.node');
-    const sourceNodePath = path.join(__dirname, '..', 'node_modules', 'sqlite3', 'build', 'Release', 'node_sqlite3.node');
-
-    if (fs.existsSync(sourceNodePath)) {
-      fs.copyFileSync(sourceNodePath, targetNodePath);
-      console.log('✅ SQLite3 Linux binary installed successfully!');
-    } else {
-      console.log('⚠️  SQLite3 binary not found in node_modules. Run "npm install" first.');
-    }
-  } catch (e) {
-    console.error('❌ Failed to patch sqlite3:', e && e.message);
-  }
+  // Build db-cross-v4 from source
+  const { main: patchDbCrossV4 } = require('./patches/patch-db-cross-v4');
+  await patchDbCrossV4();
 }
 
 function commandExists(command) {

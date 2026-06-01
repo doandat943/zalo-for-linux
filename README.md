@@ -59,11 +59,12 @@ Prerequisites:
 - Linux x86_64
 - Node.js and npm
 - 7z (p7zip-full) for extracting the macOS app during setup
+- C++ build tools (for native addons): `build-essential`, `libssl-dev`, `liblzma-dev`
 
 On Debian/Ubuntu:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y p7zip-full
+sudo apt-get update && sudo apt-get install -y p7zip-full build-essential libssl-dev liblzma-dev
 ```
 
 Steps:
@@ -75,113 +76,15 @@ cd zalo-for-linux
 # Then initialize or update submodules
 git submodule update --init --recursive
 
-# Option 1: Auto-download latest version (recommended)
-npm run main:setup
-
-# Option 2: Download specific version
-ZALO_VERSION="25.11.20" npm run main:setup
-
-# Build AppImage
-npm run main:build
+# Run setup + build (downloads DMG, extracts, patches, packages)
+npm run main
 ```
 
-> ⚠️ Notes:
-> - `npm run main` runs setup + build (equivalent to `SETUP=true BUILD=true node scripts/main.js`).
-> - `npm run main:setup` runs check-versions + download-dmg + prepare-zadark + prepare-app.
-> - `npm run main:build` runs build stage only.
+The final AppImage will be in the `dist/` directory.
 
-The final AppImage will be in the `dist/` directory!
-
-## 🛠️ Development Scripts
-
-| **Command** | **Description** |
-|---|---|
-| `npm run main:setup` | `SETUP=true node scripts/main.js` (check + download + prepare) |
-| `npm run main:build` | `BUILD=true node scripts/main.js` (build AppImage) |
-| `npm run start` | Runs the app in development mode |
-| `npm run build` | Builds AppImage (calls `scripts/build.js`) |
-| `npm run download-dmg`* | Download Zalo DMG |
-| `npm run prepare-app`* | Extract Zalo DMG |
-| `npm run prepare-zadark` | Clones and builds ZaDark assets for later integration |
-
-## 🌍 Environment Variables
-
-| **Variable** | **Description** | **Example** |
-|---|---|---|
-| `ZALO_VERSION` | Specify exact Zalo version to download/extract | `ZALO_VERSION="25.11.20"` |
-| `ZADARK_VERSION` | Specify exact ZaDark version to download/integrate | `ZADARK_VERSION="v8.3.4"` |
-| `FORCE_DOWNLOAD` | Force re-download even if file exists | `FORCE_DOWNLOAD=true` |
-
-## Example
-
-**🆕 Auto using latest version (Default - Meant without any environtment variable):**
-
-```bash
-# Automatically downloads the latest Zalo version from https://zalo.me/download/zalo-pc
-npm run download-dmg
-
-# If only one DMG file in `temp/` directory, auto select that file and extract
-# If multiple DMG file in `temp/` directory, show DMG selection menu
-npm run prepare-app
-
-# Automatically downloads the latest Zalo version from https://zalo.me/download/zalo-pc
-# Extract DMG version selected from previous step
-# Prepare ZaDark
-npm run main:setup
-```
-
-**🎯 Version Mode (Meant with environtment variable):**
-
-```bash
-# Just specify the version number! Script constructs the URL automatically
-# Uses pattern: https://res-download-pc.zadn.vn/mac/ZaloSetup-universal-{ZALO_VERSION}.dmg
-# Zalo servers handle redirect to the actual download location
-ZALO_VERSION="25.8.2" npm run download-dmg
-
-# Extract DMG version specificed
-ZALO_VERSION="25.8.2" npm run prepare-app
-
-# Forces re-download even if file already exists
-FORCE_DOWNLOAD=true npm run download-dmg
-
-# Example: Specific version with force re-download
-ZALO_VERSION="25.8.2" FORCE_DOWNLOAD=true npm run download-dmg
-ZALO_VERSION="25.8.2" FORCE_DOWNLOAD=true npm run main:setup
-```
-
-### 🎯 Interactive DMG Selection
-
-When running `npm run prepare-app` with multiple DMG files in the `temp/` directory:
-
-- **📋 Modern interface**: Arrow key navigation with radio button selection
-- **🔍 Smart sorting**: Files ordered by version (highest first), then by date
-- **📊 Detailed info**: Displays version, file size, and download date for each option
-- **⚡ Intuitive controls**: Use ↑↓ arrows to navigate, Enter to select, Esc to cancel
-- **🎯 Single file**: Auto-selects if only one DMG file exists
-
-**Example interactive session:**
-
-```
-📋 Available DMG files:
-   Use ↑↓ arrow keys to navigate, Enter to select, Esc to cancel
-
-  ● ZaloSetup-universal-26.1.0.dmg
-    Version: v26.1.0 | Size: 198.5MB | Date: 12/20/2024, 3:45:12 PM
-
-  ○ ZaloSetup-universal-25.8.2.dmg
-    Version: v25.8.2 | Size: 195.2MB | Date: 12/15/2024, 10:23:45 AM
-
-  ○ ZaloSetup-universal-25.5.3.dmg
-    Version: v25.5.3 | Size: 192.1MB | Date: 12/10/2024, 2:15:30 PM
-
-🎯 Selected: ZaloSetup-universal-26.1.0.dmg (v26.1.0)
-```
-
-**Navigation:**
-
-- **↑↓** Arrow keys to move selection
-- **Enter** to confirm selection
-- **Esc** or **Ctrl+C** to cancel
+> For a detailed walkthrough of the build pipeline, scripts, environment
+> variables, and how to add new patches, see
+> [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ## ⚙️ How It Works
 
@@ -193,20 +96,23 @@ This project is not a from-scratch rewrite of Zalo. It works by:
 4.  Wrapping the extracted application in a minimal, Linux-compatible Electron shell.
 5.  Using `electron-builder` to package everything into a single, portable `AppImage` file.
 
+For a deeper dive into the build pipeline and patching strategy, see
+[ARCHITECTURE.md](./ARCHITECTURE.md).
+
+For native addons (db-cross-v4, etc.), see
+[`nativelibs/README.md`](./nativelibs/README.md).
+
 ## 🐛 Troubleshooting & Debugging
 
 If you encounter issues or want to inspect the app's behavior, you can easily open Chrome Developer Tools (DevTools) using the following methods:
 - **Keyboard Shortcut**: Press `Ctrl` + `Shift` + `I` while the Zalo window is focused.
 - **Tray Menu**: Right-click the Zalo tray icon and select **"Toggle DevTools"**.
 
-## 🤝 Contributing
+## 📚 More Documentation
 
-Contributions are welcome, especially for improving Linux integration, fixing bugs, and enhancing the build scripts.
-
-1.  Fork the repository.
-2.  Create your feature branch.
-3.  Commit your changes.
-4.  Submit a Pull Request.
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — How the build pipeline and patches work
+- [DEVELOPMENT.md](./DEVELOPMENT.md) — Building from source, scripts, adding patches
+- [nativelibs/README.md](./nativelibs/README.md) — Native addons (db-cross-v4, etc.)
 
 ## 📄 License
 

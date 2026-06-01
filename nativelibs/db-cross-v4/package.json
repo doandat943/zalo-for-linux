@@ -1,0 +1,13 @@
+{
+  "name": "db-cross-v4-linux",
+  "version": "1.0.0",
+  "description": "Linux reimplementation of Zalo db-cross-v4 backup decrypt addon",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "build": "node-gyp configure build"
+  },
+  "dependencies": {
+    "node-addon-api": "^5.0.0"
+  }
+}
