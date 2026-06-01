@@ -1,6 +1,7 @@
 const { execSync } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
+const logger = require('../utils/logger');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
 const NATIVELIBS_DIR = path.join(__dirname, '..', '..', 'nativelibs');
@@ -8,20 +9,22 @@ const BUILDER_SCRIPT = path.join(NATIVELIBS_DIR, 'builder.js');
 const DB_CROSS_V4_DIR = path.join(NATIVELIBS_DIR, 'db-cross-v4');
 
 async function main() {
-  console.log('🔨 Building db-cross-v4 from source...');
+  logger.info('Building db-cross-v4 from source...');
 
   if (!fs.existsSync(path.join(DB_CROSS_V4_DIR, 'binding.gyp'))) {
-    console.log('⚠️  db-cross-v4 not found, skipping');
+    logger.warn('db-cross-v4 not found, skipping');
     return;
   }
 
   try {
     execSync(`node "${BUILDER_SCRIPT}" "${DB_CROSS_V4_DIR}"`, {
       cwd: path.join(__dirname, '..', '..'),
-      stdio: 'inherit'
+      stdio: 'pipe'
     });
   } catch (error) {
-    throw new Error(`Failed to build db-cross-v4: ${error.message}`);
+    logger.error('Failed to build db-cross-v4', error.message);
+    if (error.stdout) logger.dim(error.stdout.toString());
+    throw new Error(`Failed to build db-cross-v4`);
   }
 
   const releaseDir = path.join(DB_CROSS_V4_DIR, 'build', 'Release');
@@ -35,7 +38,6 @@ async function main() {
       path.join(releaseDir, file),
       path.join(destDir, file)
     );
-    console.log(`✅ db-cross-v4/${file} → app/native/nativelibs/db-cross-v4/prebuilt/linux/electron/x64/`);
   }
 
   const bindingJsPath = path.join(APP_DIR, 'native', 'nativelibs', 'db-cross-v4', 'dist', 'binding.js');
@@ -48,7 +50,7 @@ async function main() {
         `else if (process.platform === 'linux') {\n    addon = require('../prebuilt/linux/electron/x64/db-cross-v4-native.node');\n}\nelse {\n    if (process.arch === 'x64')`
       );
       fs.writeFileSync(bindingJsPath, content, 'utf8');
-      console.log('✅ Patched binding.js to add Linux support');
+      logger.dim('Patched binding.js for Linux support');
     }
   }
 
@@ -59,16 +61,16 @@ async function main() {
     if (content.includes('case"LINUX":return 25;')) {
       content = content.replace(/case"LINUX":return 25;/g, 'case"LINUX":return 24;');
       fs.writeFileSync(mainJsPath, content, 'utf8');
-      console.log('✅ Patched case"LINUX":return 25; -> 24 (Linux platform ID fix)');
+      logger.dim('Patched platform ID (25 -> 24)');
     }
   }
 
-  console.log('✅ db-cross-v4 built and installed!');
+  logger.success('db-cross-v4 built and installed');
 }
 
 if (require.main === module) {
   main().catch(err => {
-    console.error('💥', err.message);
+    logger.error(err.message);
     process.exit(1);
   });
 }

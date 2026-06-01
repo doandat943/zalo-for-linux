@@ -2,12 +2,11 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const logger = require('./utils/logger');
 
 const ZADARK_DIR = path.join(__dirname, '..', 'plugins', 'zadark');
 
 async function main() {
-  console.log('🔍 Checking versions and determining build workflow...');
-
   try {
     // Get all required versions
     const targetZaloVersion = process.env.ZALO_VERSION || await getLatestZaloVersion();
@@ -18,7 +17,7 @@ async function main() {
 
     // Only check combinations in GitHub Actions
     if (process.env.GITHUB_ACTIONS) {
-      console.log('🤖 GitHub Actions detected - checking existing combinations');
+      logger.info('GitHub Actions detected - checking existing combinations');
 
       const targetCommit = execSync('git rev-parse --short HEAD', {
         encoding: 'utf8'
@@ -27,29 +26,28 @@ async function main() {
 
       // Check existing combinations in releases
       const existingCombo = await getExistingCombinations();
-      console.log(`📦 Found ${existingCombo.length} existing combinations`);
+      logger.info(`Found ${existingCombo.length} existing combinations in releases`);
 
       // Check if combination already exists
       const targetCombo = `${targetZaloVersion}+${targetZaDarkVersion}+${targetCommit}`;
       const isExist = existingCombo.includes(targetCombo);
 
       if (isExist) {
-        console.log(`🎯 Workflow decision: skip (found ${targetCombo})`);
+        logger.info(`Workflow decision: skip (found ${targetCombo})`);
         process.env.BUILD = 'false';
       } else {
-        console.log(`🎯 Workflow decision: build (missing ${targetCombo})`);
+        logger.info(`Workflow decision: build (missing ${targetCombo})`);
         process.env.BUILD = 'true';
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `build=true\n`);
       }
     }
 
     // Output for CI/scripts
-    console.log('\n📋 Environment variables set:');
-    console.log(`BUILD=${process.env.BUILD || 'none'}`);
-    console.log(`ZALO_VERSION=${process.env.ZALO_VERSION || 'none'}`);
-    console.log(`ZADARK_VERSION=${process.env.ZADARK_VERSION || 'none'}`);
+    logger.dim(`ZALO_VERSION=${process.env.ZALO_VERSION}`);
+    logger.dim(`ZADARK_VERSION=${process.env.ZADARK_VERSION}`);
+    if (process.env.BUILD) logger.dim(`BUILD=${process.env.BUILD}`);
   } catch (error) {
-    console.error('💥 Version check failed:', error.message);
+    logger.error('Version check failed:', error.message);
     process.exit(0); // Don't fail the whole pipeline
   }
 }
@@ -148,7 +146,7 @@ async function getExistingCombinations() {
 
           resolve(Array.from(combinations));
         } catch (error) {
-          console.warn('⚠️ Could not parse releases, assuming no existing combinations');
+          logger.warn('Could not parse releases, assuming no existing combinations');
           resolve([]);
         }
       });
