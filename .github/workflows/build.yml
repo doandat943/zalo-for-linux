@@ -49,6 +49,11 @@ jobs:
     - name: Install Node.js dependencies
       run: npm ci --prefer-offline --no-audit
 
+    - name: Install system build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y liblzma-dev
+
     - name: Setup and Build
       id: build
       env:
