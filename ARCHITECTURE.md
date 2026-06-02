@@ -28,6 +28,7 @@ zalo-for-linux/
 │   └── patches/             # Individual patch scripts
 │       ├── patch-titlebar.js
 │       ├── patch-sqlite3.js
+│       ├── patch-pasting-img.js
 │       └── patch-db-cross-v4.js
 ├── plugins/                 # Git submodules
 │   ├── zadark/              # Dark mode extension
@@ -51,7 +52,8 @@ zalo-for-linux/
    via `scripts/patches/`:
    - `patch-titlebar.js` — Enable native title bar
    - `patch-sqlite3.js` — Replace macOS sqlite3 with Linux binary
-   - `patch-db-cross-v4.js` — Build db-cross-v4 from source + patch binding.js + fix Linux platform ID
+   - `patch-pasting-img.js` — Patch clipboard helpers + paste handler for image paste (Wayland + X11)
+   - `patch-db-cross-v4.js` — Build db-cross-v4 from source + patch binding.js + spoof macOS platform ID (25 → 23)
 5. **build** — Packages everything into `dist/Zalo-<version>.AppImage`
 
 ## Extracted App Patches
@@ -63,7 +65,8 @@ for Linux compatibility. These are applied in `scripts/prepare-app.js`:
 |-------|-----|
 | `patch-titlebar.js` | `T,frame:!1` → `T,frame:!0` — Enable native title bar |
 | `patch-sqlite3.js` | macOS `node_sqlite3.node` → Linux one — Avoid "invalid ELF header" crash |
-| `patch-db-cross-v4.js` | Build db-cross-v4 from source, patch `binding.js` for Linux, fix `case"LINUX":return 25;` → `24` |
+| `patch-pasting-img.js` | Inject 4 clipboard helpers + paste event handler so `Ctrl+V` works for images. Falls back to `wl-paste` (Wayland) and `xclip` (X11) when Electron's `clipboard.readImage()` returns empty |
+| `patch-db-cross-v4.js` | Build db-cross-v4 from source, patch `binding.js` for Linux, fix `case"LINUX":return 25;` → `23` (macOS) — see comment in source for why |
 
 For more details on the native addons, see [nativelibs/README.md](./nativelibs/README.md).
 
