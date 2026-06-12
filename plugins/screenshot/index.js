@@ -11,6 +11,7 @@ const { exec, execSync } = require('child_process');
 
 // Screenshot tools (in priority order)
 const SCREENSHOT_TOOLS = [
+  { name: 'cosmic-screenshot',      cmd: 'cosmic-screenshot' },
   { name: 'deepin-screen-recorder', cmd: 'deepin-screen-recorder' },
   { name: 'spectacle',              cmd: 'spectacle -rbc' },
   { name: 'flameshot',              cmd: 'flameshot gui' },
