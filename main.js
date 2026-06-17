@@ -46,6 +46,19 @@ function toggleDevTools() {
   }
 }
 
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+  mainWindow.moveTop();
+  try {
+    mainWindow.webContents.send('show-from-tray');
+  } catch (e) {
+    console.error('Failed to send show-from-tray:', e);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
@@ -77,16 +90,11 @@ app.on('browser-window-created', (_evt, win) => {
       if (tray) {
         const contextMenu = Menu.buildFromTemplate([
           {
-            label: 'Show',
-            click: () => {
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.show();
-                mainWindow.focus();
-              }
-            }
+            label: 'Mở Zalo',
+            click: showMainWindow
           },
           {
-            label: 'Hide',
+            label: 'Ẩn Zalo',
             click: () => {
               if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.hide();
@@ -98,7 +106,7 @@ app.on('browser-window-created', (_evt, win) => {
             click: toggleDevTools
           },
           {
-            label: 'Quit',
+            label: 'Thoát',
             click: () => {
               isAppQuitting = true;
               if (tray) {
@@ -113,11 +121,18 @@ app.on('browser-window-created', (_evt, win) => {
       }
     }
 
-    // Minimize to tray instead of closing
+    // Minimize to tray instead of closing.
+    // The 50ms delay lets `event.preventDefault()` settle before hiding —
+    // hiding immediately causes "Show" to be a no-op on some Linux DEs
+    // (fixes #27).
     win.on('close', (event) => {
-      if (!isAppQuitting && tray) {
+      if (!isAppQuitting && tray && (win === mainWindow || win.getTitle().includes('Zalo'))) {
         event.preventDefault();
-        win.hide();
+        setTimeout(() => {
+          if (!isAppQuitting && !win.isDestroyed()) {
+            win.hide();
+          }
+        }, 50);
       }
     });
   } catch (e) {
@@ -136,12 +151,8 @@ app.once('ready', () => {
     try {
       tray = new Tray(iconPath);
       tray.setToolTip('Zalo');
-      tray.on('click', () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
-      });
+      tray.on('click', showMainWindow);
+      tray.on('double-click', showMainWindow);
       globalShortcut.register('CommandOrControl+Shift+I', toggleDevTools);
     } catch (e) {
       console.error('Tray init failed:', e);
