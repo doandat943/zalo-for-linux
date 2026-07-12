@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -69,7 +69,6 @@ app.on('before-quit', () => {
     tray.destroy();
     tray = null;
   }
-  try { globalShortcut.unregisterAll(); } catch (_) { }
 });
 
 app.on('browser-window-created', (_evt, win) => {
@@ -86,6 +85,12 @@ app.on('browser-window-created', (_evt, win) => {
     if (!mainWindow && win.getTitle() !== 'Shared Worker') {
       mainWindow = win;
       screenshotPlugin.setMainWindow(win);
+
+      mainWindow.webContents.on('before-input-event', (_event, input) => {
+        if ((input.control) && input.shift && input.key.toLowerCase() === 'i') {
+          toggleDevTools();
+        }
+      });
 
       if (tray) {
         const contextMenu = Menu.buildFromTemplate([
@@ -153,7 +158,6 @@ app.once('ready', () => {
       tray.setToolTip('Zalo');
       tray.on('click', showMainWindow);
       tray.on('double-click', showMainWindow);
-      globalShortcut.register('CommandOrControl+Shift+I', toggleDevTools);
     } catch (e) {
       console.error('Tray init failed:', e);
     }
