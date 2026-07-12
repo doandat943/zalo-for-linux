@@ -162,6 +162,12 @@ async function extractAppAsar() {
 
   const { main: patchDbCrossV4 } = require('./patches/patch-db-cross-v4');
   await patchDbCrossV4();
+
+  const { main: patchFixImageResizeLinux } = require('./patches/patch-fix-image-resize-linux');
+  await patchFixImageResizeLinux();
+
+  const { main: patchFixImageResizeCanvas } = require('./patches/patch-fix-image-resize-canvas');
+  await patchFixImageResizeCanvas();
 }
 
 function commandExists(command) {
