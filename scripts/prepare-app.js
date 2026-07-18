@@ -150,7 +150,7 @@ async function extractAppAsar() {
 
   // Apply patches
   logger.info('Applying platform patches...');
-  
+
   const { main: patchTitlebar } = require('./patches/patch-titlebar');
   await patchTitlebar();
 
@@ -162,6 +162,12 @@ async function extractAppAsar() {
 
   const { main: patchDbCrossV4 } = require('./patches/patch-db-cross-v4');
   await patchDbCrossV4();
+
+  const { main: patchFileUtilities } = require('./patches/patch-file-utilities');
+  await patchFileUtilities();
+
+  const { main: patchFileUtils } = require('./patches/patch-file-utils');
+  await patchFileUtils();
 
   const { main: patchFixImageResizeLinux } = require('./patches/patch-fix-image-resize-linux');
   await patchFixImageResizeLinux();

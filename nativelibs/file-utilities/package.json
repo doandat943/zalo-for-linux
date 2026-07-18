@@ -1,0 +1,15 @@
+{
+  "name": "re-impl-file-utilities",
+  "version": "1.0.0",
+  "description": "Re-impl of file-utilities for Linux",
+  "main": "index.js",
+  "scripts": {
+    "build": "cargo build --release"
+  },
+  "author": "DMKha",
+  "license": "ISC",
+  "files": [
+    "index.js",
+    "*.node"
+  ]
+}
