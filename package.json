@@ -68,6 +68,7 @@
     "nodeGypRebuild": false,
     "npmRebuild": false,
     "linux": {
+      "executableName": "zalo",
       "target": "AppImage",
       "category": "Network",
       "desktop": {
