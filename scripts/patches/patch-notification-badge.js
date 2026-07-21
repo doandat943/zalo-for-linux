@@ -143,8 +143,8 @@ try {
 
     _desktopFiles = getDesktopFiles(app);
     try {
-      if (app.setDesktopName && _desktopFiles.length > 0) {
-        app.setDesktopName(_desktopFiles[0]);
+      if (app.setDesktopName) {
+        app.setDesktopName('zalo');
       }
     } catch (_) {}
 
