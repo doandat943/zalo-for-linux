@@ -68,11 +68,12 @@
     "nodeGypRebuild": false,
     "npmRebuild": false,
     "linux": {
+      "executableName": "zalo",
       "target": "AppImage",
       "category": "Network",
       "desktop": {
         "entry": {
-          "StartupWMClass": "zalo-for-linux"
+          "StartupWMClass": "zalo"
         }
       },
       "synopsis": "Zalo messaging app for Linux",
