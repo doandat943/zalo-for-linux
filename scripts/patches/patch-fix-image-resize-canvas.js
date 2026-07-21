@@ -3,76 +3,138 @@ const path = require('path');
 const logger = require('../utils/logger');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
+const PATCH_MARKER = 'zalo-linux-browser-image-resize-v2';
 
-// The renderer's photo-resize entry point (offloads to the native "zimage"
-// resize task, see patch-fix-image-resize-linux.js for why that fails on
-// Linux) is called with either a filesystem path (drag-drop of a real file)
-// or a raw File/Blob object (clipboard paste, in-memory sources) as its
-// first argument. Passing a File object through to the Node utility-process
-// task hangs forever — Electron's structured-clone can't transfer a File
-// across that boundary ("#<File> could not be cloned"), and the renderer
-// never gets a response back.
-//
-// This patch replaces that entry point with a pure Canvas 2D resize: decode
-// via <img>, draw scaled onto a canvas, re-encode with canvas.toBlob(). It
-// handles both source types (reads the path via $zFileManager first if
-// needed), so it also fixes the Linux-only "no native resize" gap without
-// falling back to sending an unresized image (unlike the destinationPath
-// fallback in patch-fix-image-resize-linux.js, which is left in place as a
-// backstop for any other caller of the native resize path).
+// Zalo normally sends images to a native libvips task before uploading them.
+// That task is not reliable on Linux and a clipboard File cannot be structured-
+// cloned to Electron's utility process. Keep the resize inside Chromium and,
+// most importantly, return the original Blob when decoding/resizing fails. A
+// rejected resize promise makes Zalo downgrade an otherwise valid image to a
+// generic attachment.
 async function main() {
-  const original = 'async resizeImage(t,{width:n,height:a,quality:s,format:i,destinationPath:o}){' +
-    'const r=new F.ResizeTask({payload:{src:t,width:n,height:a,quality:s,outputFormat:i,destinationPath:o}});' +
-    'De.zsymb(15,"Wa57B9",["offload resize via libvips","XuCTfw"],{src:t});' +
-    'try{const e=await r.run();' +
-    'return De.zsymb(15,"vYh1lX",["offload resize via libvips complete","UvVbd5"],{src:t}),e}' +
-    'catch(e){throw De.zsymb(21,"sriLO1",["offload resize via libvips fail","s606QH"],{src:t,error:e}),e}}';
-
-  const replacement = 'async resizeImage(t,{width:n,height:a,quality:s,format:i,destinationPath:o}){' +
-    'De.zsymb(15,"Wa57B9",["offload resize via libvips","XuCTfw"],{src:t});' +
-    'try{' +
-    'const zsrcBlob="string"==typeof t?new Blob([await window.$zFileManager.getFileArrayBuffer(t)]):t;' +
-    'const zurl=URL.createObjectURL(zsrcBlob);' +
-    'let zoutBlob;' +
-    'try{' +
-    'const zimg=await new Promise(((zres,zrej)=>{' +
-    'const zim=new Image();' +
-    'zim.onload=()=>zres(zim);' +
-    'zim.onerror=()=>zrej(new Error("canvas-resize: source image failed to decode"));' +
-    'zim.src=zurl' +
-    '}));' +
-    'const zcanvas=document.createElement("canvas");' +
-    'zcanvas.width=n;zcanvas.height=a;' +
-    'const zctx=zcanvas.getContext("2d");' +
-    'zctx.drawImage(zimg,0,0,n,a);' +
-    'zoutBlob=await new Promise((zres=>zcanvas.toBlob(zres,"jpeg"===i?"image/jpeg":"image/png",s)));' +
-    'if(!zoutBlob)throw new Error("canvas-resize: toBlob returned null")' +
-    '}finally{URL.revokeObjectURL(zurl)}' +
-    'if(o)await window.$zFileManager.writeBlobToPath(o,zoutBlob);' +
-    'return De.zsymb(15,"vYh1lX",["offload resize via libvips complete","UvVbd5"],{src:t}),o?void 0:zoutBlob}' +
-    'catch(e){throw De.zsymb(21,"sriLO1",["offload resize via libvips fail","s606QH"],{src:t,error:e}),e}}';
-
-  // pc-dist chunk filenames are content-hashed and change with every Zalo
-  // release, so scan for whichever file(s) actually contain the pattern
-  // instead of hardcoding a path.
   const pcDistDir = path.join(APP_DIR, 'pc-dist');
   const candidates = listJsFiles(pcDistDir);
   let patchedCount = 0;
+  let alreadyPatchedCount = 0;
 
   for (const filePath of candidates) {
     const content = fs.readFileSync(filePath, 'utf8');
-    if (!content.includes(original)) continue;
+    if (content.includes(PATCH_MARKER)) alreadyPatchedCount += 1;
 
-    const occurrences = content.split(original).length - 1;
-    const newContent = content.split(original).join(replacement);
+    const matches = findResizeMethods(content);
+    if (matches.length === 0) continue;
+
+    let newContent = content;
+    for (const match of matches.slice().reverse()) {
+      newContent = newContent.slice(0, match.start)
+        + buildReplacement(match.variables)
+        + newContent.slice(match.end);
+    }
+
     fs.writeFileSync(filePath, newContent, 'utf8');
-    logger.dim(`Patched ${path.relative(APP_DIR, filePath)}: canvas-based resize (${occurrences} occurrence${occurrences > 1 ? 's' : ''})`);
-    patchedCount += occurrences;
+    logger.dim(`Patched ${path.relative(APP_DIR, filePath)}: browser image resize with Blob fallback (${matches.length} occurrence${matches.length > 1 ? 's' : ''})`);
+    patchedCount += matches.length;
   }
 
-  if (patchedCount === 0) {
-    logger.warn('Pattern for renderer resizeImage (F.ResizeTask offload) not found in app/pc-dist, skipping canvas-resize patch (Zalo may have changed this code)');
+  if (patchedCount === 0 && alreadyPatchedCount === 0) {
+    logger.warn('Renderer ResizeTask entry point not found in app/pc-dist; Zalo may have changed this code');
   }
+}
+
+function findResizeMethods(content) {
+  // Match only the stable shape of the ResizeTask call. Logger identifiers and
+  // message IDs are intentionally ignored because Zalo changes them per build.
+  const startPattern = /async resizeImage\(([$\w]+),\{width:([$\w]+),height:([$\w]+),quality:([$\w]+),format:([$\w]+),destinationPath:([$\w]+)\}\)\{const ([$\w]+)=new [$\w]+\.ResizeTask\(\{payload:\{src:\1,width:\2,height:\3,quality:\4,outputFormat:\5,destinationPath:\6\}\}\);/g;
+  const matches = [];
+  let found;
+
+  while ((found = startPattern.exec(content)) !== null) {
+    // The first brace belongs to the destructured options parameter. The
+    // method body is the later `{const ...` matched by startPattern.
+    const bodyStart = content.indexOf('{const', found.index);
+    const end = findMatchingBrace(content, bodyStart);
+    if (end < 0) continue;
+
+    const method = content.slice(found.index, end + 1);
+    if (!method.includes('offload resize via libvips') || !method.includes(`await ${found[7]}.run()`)) continue;
+
+    matches.push({
+      start: found.index,
+      end: end + 1,
+      variables: {
+        src: found[1],
+        width: found[2],
+        height: found[3],
+        quality: found[4],
+        format: found[5],
+        destinationPath: found[6],
+      },
+    });
+    startPattern.lastIndex = end + 1;
+  }
+
+  return matches;
+}
+
+function findMatchingBrace(content, openingBrace) {
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+
+  for (let index = openingBrace; index < content.length; index += 1) {
+    const character = content[index];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+    } else if (character === '{') {
+      depth += 1;
+    } else if (character === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+
+  return -1;
+}
+
+function buildReplacement({ src, width, height, quality, format, destinationPath }) {
+  return `async resizeImage(${src},{width:${width},height:${height},quality:${quality},format:${format},destinationPath:${destinationPath}}){`
+    + `const zMarker="${PATCH_MARKER}";`
+    + `const zMime="jpeg"===${format}||"jpg"===${format}?"image/jpeg":"image/png";`
+    + `let zSource="string"==typeof ${src}?new Blob([await window.$zFileManager.getFileArrayBuffer(${src})],{type:zMime}):${src};`
+    + 'if(!(zSource instanceof Blob))zSource=new Blob([zSource],{type:zMime});'
+    + 'try{'
+    + 'const zBitmap=await createImageBitmap(zSource);'
+    + 'let zOutput;'
+    + 'try{'
+    + 'const zCanvas=document.createElement("canvas");'
+    + `const zWidth=Math.max(1,Math.round(Number(${width})||zBitmap.width));`
+    + `const zHeight=Math.max(1,Math.round(Number(${height})||zBitmap.height));`
+    + 'zCanvas.width=zWidth;zCanvas.height=zHeight;'
+    + 'const zContext=zCanvas.getContext("2d");'
+    + 'if(!zContext)throw new Error("Linux image resize: Canvas 2D unavailable");'
+    + 'zContext.drawImage(zBitmap,0,0,zWidth,zHeight);'
+    + `zOutput=await new Promise(zResolve=>zCanvas.toBlob(zResolve,zMime,${quality}));`
+    + 'if(!zOutput)throw new Error("Linux image resize: toBlob returned null")'
+    + '}finally{zBitmap.close&&zBitmap.close()}'
+    + `if(${destinationPath}){await window.$zFileManager.writeBlobToPath(${destinationPath},zOutput);return}`
+    + 'return zOutput'
+    + '}catch(zError){'
+    + `console.warn(zMarker+": using original image",zError);`
+    + `if(${destinationPath}){await window.$zFileManager.writeBlobToPath(${destinationPath},zSource);return}`
+    + 'return zSource'
+    + '}}';
 }
 
 function listJsFiles(dir) {
@@ -93,4 +155,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { main };
+module.exports = { main, findResizeMethods, findMatchingBrace, buildReplacement };

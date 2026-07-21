@@ -19,7 +19,7 @@ function register({ app, ipcMain }) {
 
   try {
     if (app.setDesktopName) {
-      app.setDesktopName('zalo');
+      app.setDesktopName('zalo.desktop');
     }
   } catch (_) {}
 
