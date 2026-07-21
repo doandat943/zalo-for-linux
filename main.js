@@ -15,7 +15,7 @@ const iconPath = path.join(appDir, 'pc-dist', 'favicon-512x512.png');
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-
+app.setName('zalo');
 let tray = null;
 let mainWindow = null;
 let isAppQuitting = false;

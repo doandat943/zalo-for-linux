@@ -69,6 +69,7 @@
     "npmRebuild": false,
     "linux": {
       "executableName": "zalo",
+      "syncDesktopName": true,
       "target": "AppImage",
       "category": "Network",
       "desktop": {
