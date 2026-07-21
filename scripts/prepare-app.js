@@ -174,6 +174,9 @@ async function extractAppAsar() {
 
   const { main: patchFixImageResizeCanvas } = require('./patches/patch-fix-image-resize-canvas');
   await patchFixImageResizeCanvas();
+
+  const { main: patchNotificationBadge } = require('./patches/patch-notification-badge');
+  await patchNotificationBadge();
 }
 
 function commandExists(command) {

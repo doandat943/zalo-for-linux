@@ -26,6 +26,7 @@ let isAppQuitting = false;
 
 const zaluxPlugin = require('./plugins/zalux');
 const screenshotPlugin = require('./plugins/screenshot');
+const launcherBadgePlugin = require('./plugins/launcher-badge');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -164,6 +165,7 @@ app.once('ready', () => {
   }
 
 // Register plugins
+  launcherBadgePlugin.register({ app, ipcMain });
   zaluxPlugin.register({ app, ipcMain, BrowserWindow, appDir });
   screenshotPlugin.register({ ipcMain });
 });
