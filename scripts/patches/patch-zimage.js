@@ -6,18 +6,18 @@ const logger = require('../utils/logger');
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
 const NATIVELIBS_DIR = path.join(__dirname, '..', '..', 'nativelibs');
 const BUILDER_SCRIPT = path.join(NATIVELIBS_DIR, 'builder-rust.js');
-const FILE_UTILS_DIR = path.join(NATIVELIBS_DIR, 'zimage');
+const ZIMAGE_DIR = path.join(NATIVELIBS_DIR, 'zimage');
 
 async function main() {
   logger.info('Building zimage from source...');
 
-  if (!fs.existsSync(path.join(FILE_UTILS_DIR, 'Cargo.toml'))) {
+  if (!fs.existsSync(path.join(ZIMAGE_DIR, 'Cargo.toml'))) {
     logger.warn('zimage not found, skipping');
     return;
   }
 
   try {
-    execSync(`node "${BUILDER_SCRIPT}" "${FILE_UTILS_DIR}"`, {
+    execSync(`node "${BUILDER_SCRIPT}" "${ZIMAGE_DIR}"`, {
       cwd: path.join(__dirname, '..', '..'),
       stdio: 'pipe'
     });
@@ -27,7 +27,7 @@ async function main() {
     throw new Error(`Failed to build zimage`);
   }
 
-  const releaseDir = path.join(FILE_UTILS_DIR, 'target', 'release');
+  const releaseDir = path.join(ZIMAGE_DIR, 'target', 'release');
   const nodeFiles = fs.readdirSync(releaseDir).filter(f => f.endsWith('.node'));
 
   const destDir = path.join(APP_DIR, 'native', 'nativelibs', 'zimage', 'linux_x64');

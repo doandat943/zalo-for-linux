@@ -2,9 +2,9 @@
   "name": "re-impl-zimage",
   "version": "1.0.0",
   "description": "Re-impl of zimage for Linux",
-  "main": "zimage.node",
+  "main": "build/Release/zimage.node",
   "scripts": {
-    "build": "cargo build --release && cp target/release/libzimage.so zimage.node",
+    "build": "cargo build --release && cp target/release/libzimage.so build/Release/zimage.node",
     "build:debug": "cargo build",
     "test": "node test.js"
   },
@@ -12,6 +12,6 @@
   "license": "ISC",
   "files": [
     "index.js",
-    "*.node"
+    "build/Release/zimage.node"
   ]
 }
