@@ -5,34 +5,29 @@ const logger = require('../utils/logger');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
 const NATIVELIBS_DIR = path.join(__dirname, '..', '..', 'nativelibs');
-const BUILDER_SCRIPT = path.join(NATIVELIBS_DIR, 'builder.js');
-const ZIMAGE_DIR = path.join(NATIVELIBS_DIR, 'zimage');
-const VIPS_TAR_URL = 'https://github.com/lovell/sharp-libvips/releases/download/v8.14.5/libvips-8.14.5-linux-x64.tar.gz';
+const BUILDER_SCRIPT = path.join(NATIVELIBS_DIR, 'builder-rust.js');
+const FILE_UTILS_DIR = path.join(NATIVELIBS_DIR, 'zimage');
 
 async function main() {
   logger.info('Building zimage from source...');
 
-  if (!fs.existsSync(path.join(ZIMAGE_DIR, 'binding.gyp'))) {
+  if (!fs.existsSync(path.join(FILE_UTILS_DIR, 'Cargo.toml'))) {
     logger.warn('zimage not found, skipping');
     return;
   }
 
-  execSync(`curl -L -s -S -o "${ZIMAGE_DIR}/vips.tar.gz" "${VIPS_TAR_URL}"`, { cwd: ZIMAGE_DIR });
-
-  execSync(`tar -xzf "${ZIMAGE_DIR}/vips.tar.gz" include lib`, { cwd: ZIMAGE_DIR });
-
   try {
-    execSync(`node "${BUILDER_SCRIPT}" "${ZIMAGE_DIR}"`, {
-      cwd: ZIMAGE_DIR,
+    execSync(`node "${BUILDER_SCRIPT}" "${FILE_UTILS_DIR}"`, {
+      cwd: path.join(__dirname, '..', '..'),
       stdio: 'pipe'
     });
   } catch (error) {
-    logger.error('Failed to build zimage: ', error.message);
+    logger.error('Failed to build zimage', error.message);
     if (error.stdout) logger.dim(error.stdout.toString());
     throw new Error(`Failed to build zimage`);
   }
 
-  const releaseDir = path.join(ZIMAGE_DIR, 'build', 'Release');
+  const releaseDir = path.join(FILE_UTILS_DIR, 'target', 'release');
   const nodeFiles = fs.readdirSync(releaseDir).filter(f => f.endsWith('.node'));
 
   const destDir = path.join(APP_DIR, 'native', 'nativelibs', 'zimage', 'linux_x64');
@@ -43,14 +38,6 @@ async function main() {
       path.join(releaseDir, file),
       path.join(destDir, file)
     );
-  }
-
-  const libvipsSrc = path.join(ZIMAGE_DIR, 'lib', 'libvips-cpp.so.42');
-  const libvipsDest = path.join(destDir, 'libvips-cpp.so.42');
-  if (fs.existsSync(libvipsSrc)) {
-    fs.copyFileSync(libvipsSrc, libvipsDest);
-  } else {
-    logger.error(`libvips-cpp.so.42 not found at ${libvipsSrc}`);
   }
 
   const indexJsPath = path.join(APP_DIR, 'native', 'nativelibs', 'zimage', 'index.js');
@@ -66,6 +53,7 @@ async function main() {
       logger.dim('Patched index.js for Linux support');
     }
   }
+
   logger.success('zimage built and installed');
 }
 

@@ -1,5 +1,3 @@
 node_modules/
-build/
-include/
-lib/
-vips.tar.gz
+target/
+
