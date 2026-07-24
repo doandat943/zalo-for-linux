@@ -13,13 +13,28 @@ Thanks **realdtn2** for the solution: [realdtn2/zalo-linux-2026](https://github.
 - **✅ Fixed: Message Synchronization (E2EE)** - Thanks to [@realdtn2](https://github.com/realdtn2) for reimplementing `db-cross-v4` with C++. E2EE message sync now works on Linux without any Wine workaround. Thanks to [@DMKha2k7](https://github.com/DMKha2k7) for the PR. See [PR #24](https://github.com/doandat943/zalo-for-linux/pull/24) and [issue #15](https://github.com/doandat943/zalo-for-linux/issues/15).
 - **✅ Fixed: No Photos/Videos, Files and Links on the Conversation Info panel** - Caused by the missing `db-cross-v4` module.
 - **✅ Fixed: Can't see message reactions** - Caused by the missing `db-cross-v4` module.
-- **✅ Fixed: Can't paste images from clipboard** - Image files (`.png`, `.jpg`, `.jpeg`, …) can now be pasted into chats via `Ctrl+V`. Works on Wayland (`wl-clipboard`) and X11 (`xclip`). Thanks to [@realdtn2](https://github.com/realdtn2) for the original solution and [@DMKha2k7](https://github.com/DMKha2k7) for the PR. See [PR #25](https://github.com/doandat943/zalo-for-linux/pull/25) and [issue #23](https://github.com/doandat943/zalo-for-linux/issues/23).
+- **✅ Fixed: Can't paste text or images from clipboard** - Text, raw image data, and copied image files (`.png`, `.jpg`, `.jpeg`, …) can now be pasted into chats via `Ctrl+V`. Works on Wayland (`wl-clipboard`) and X11 (`xclip`). Thanks to [@realdtn2](https://github.com/realdtn2) for the original solution and [@DMKha2k7](https://github.com/DMKha2k7) for the PR. See [PR #25](https://github.com/doandat943/zalo-for-linux/pull/25) and [issue #23](https://github.com/doandat943/zalo-for-linux/issues/23).
 - **✅ Fixed: Screenshot without/with Zalo window button** - Uses native Linux screenshot tools (see [issue #19](https://github.com/doandat943/zalo-for-linux/issues/19)). Supported tools: deepin-screen-recorder, spectacle, flameshot, gnome-screenshot, xfce4-screenshooter, mate-screenshot, ksnapshot, scrot. Thanks to [@hthienloc](https://github.com/hthienloc) for the solution.
 - **✅ Fixed: No title bar with minimize/maximize/close buttons** - Thanks to [@NanKillBro](https://github.com/NanKillBro) for the solution. For more details, see [issue #4](https://github.com/doandat943/zalo-for-linux/issues/4)
 - **✅ Fixed: No tray menu icon**
 - **✅ Fixed: Freeze on login screen** - Replaced macOS sqlite3 binaries with native Linux builds. See [issue #13](https://github.com/doandat943/zalo-for-linux/issues/13).
 
 This project is best suited for users who need a native-feeling Zalo client on Linux and are comfortable with the technical workarounds required for full functionality.
+
+## 🧩 Userscripts manager
+
+Open **Settings → Userscripts manager** to create, paste, edit, import, delete,
+and enable or disable scripts that run inside Zalo. Tampermonkey-style metadata
+such as `@name`, `@description`, `@version`, `@match`, `@include`, and
+`@exclude` is recognized. Imported scripts may use the `.js` or `.user.js`
+extension.
+
+The compatibility layer currently provides `GM_info`, `GM_addStyle`,
+`GM_getValue`, `GM_setValue`, `GM_deleteValue`, `GM_listValues`, and
+`unsafeWindow`. Changes take effect the next time the Zalo page is loaded.
+
+> **Security:** Userscripts execute with access to the current Zalo page and
+> messages displayed in it. Only install scripts whose source you trust.
 
 ## 🌙 ZaDark Integration
 

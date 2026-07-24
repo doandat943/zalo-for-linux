@@ -16,6 +16,12 @@ const iconPath = path.join(appDir, 'pc-dist', 'favicon-512x512.png');
 // State
 // ---------------------------------------------------------------------------
 app.setName('zalo');
+if (process.platform === 'linux' && app.setDesktopName) {
+  // xdg-settings expects the installed desktop entry filename, including its
+  // extension. Using just "zalo" produces "invalid application name" during
+  // Zalo's protocol-handler startup check.
+  app.setDesktopName('zalo.desktop');
+}
 let tray = null;
 let mainWindow = null;
 let isAppQuitting = false;
@@ -27,6 +33,7 @@ let isAppQuitting = false;
 const zaluxPlugin = require('./plugins/zalux');
 const screenshotPlugin = require('./plugins/screenshot');
 const launcherBadgePlugin = require('./plugins/launcher-badge');
+const userscriptsPlugin = require('./plugins/userscripts');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -168,6 +175,7 @@ app.once('ready', () => {
   launcherBadgePlugin.register({ app, ipcMain });
   zaluxPlugin.register({ app, ipcMain, BrowserWindow, appDir });
   screenshotPlugin.register({ ipcMain });
+  userscriptsPlugin.register({ app, ipcMain, BrowserWindow });
 });
 
 // ---------------------------------------------------------------------------

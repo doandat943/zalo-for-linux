@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Userscripts manager</title>
+  <link rel="stylesheet" href="manager.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">&lt;/&gt;</div>
+      <div><h1>Userscripts</h1><p>Inject scripts vào Zalo</p></div>
+    </div>
+    <div class="toolbar">
+      <button id="create-button" class="button primary">+ Create</button>
+      <button id="import-button" class="button">Import file</button>
+    </div>
+    <label class="search"><span>⌕</span><input id="search-input" placeholder="Tìm userscript…"></label>
+    <div id="script-list" class="script-list"></div>
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">JS</div>
+      <strong>Chưa có userscript</strong>
+      <span>Tạo mới, paste code hoặc import file <code>.user.js</code>.</span>
+    </div>
+  </aside>
+
+  <main class="editor-pane">
+    <section id="welcome" class="welcome">
+      <div class="welcome-icon">{ }</div>
+      <h2>Userscripts manager</h2>
+      <p>Chọn một script để chỉnh sửa hoặc tạo userscript mới.</p>
+      <p class="warning">Userscript có toàn quyền truy cập nội dung Zalo. Chỉ chạy code mà bạn tin tưởng.</p>
+    </section>
+
+    <form id="editor" class="editor hidden">
+      <header class="editor-header">
+        <div class="name-field">
+          <label for="script-name">Tên userscript</label>
+          <input id="script-name" maxlength="160" required placeholder="My Zalo userscript">
+        </div>
+        <label class="toggle-label"><span>Enabled</span><input id="script-enabled" type="checkbox"><i></i></label>
+      </header>
+      <div class="editor-meta">
+        Hỗ trợ metadata Tampermonkey: <code>@name</code>, <code>@description</code>, <code>@version</code>,
+        <code>@match</code>, <code>@include</code>, <code>@exclude</code>.
+      </div>
+      <textarea id="script-code" spellcheck="false" aria-label="Userscript source code"></textarea>
+      <footer class="editor-footer">
+        <span id="status-text">Thay đổi được áp dụng từ lần tải trang Zalo tiếp theo.</span>
+        <div class="actions">
+          <button id="delete-button" type="button" class="button danger">Delete</button>
+          <button id="cancel-button" type="button" class="button">Cancel</button>
+          <button type="submit" class="button primary">Save</button>
+        </div>
+      </footer>
+    </form>
+  </main>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="manager.js"></script>
+</body>
+</html>

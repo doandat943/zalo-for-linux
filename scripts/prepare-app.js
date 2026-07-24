@@ -154,6 +154,12 @@ async function extractAppAsar() {
   const { main: patchTitlebar } = require('./patches/patch-titlebar');
   await patchTitlebar();
 
+  const { main: patchLinuxStartup } = require('./patches/patch-linux-startup');
+  await patchLinuxStartup();
+
+  const { main: patchAutoLaunch } = require('./patches/patch-auto-launch');
+  await patchAutoLaunch();
+
   const { main: patchPastingImg } = require('./patches/patch-pasting-img');
   await patchPastingImg();
 

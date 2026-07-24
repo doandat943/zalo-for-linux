@@ -27,6 +27,8 @@ zalo-for-linux/
 │   ├── build.js             # Package into AppImage
 │   └── patches/             # Individual patch scripts
 │       ├── patch-titlebar.js
+│       ├── patch-linux-startup.js
+│       ├── patch-auto-launch.js
 │       ├── patch-sqlite3.js
 │       ├── patch-pasting-img.js
 │       └── patch-db-cross-v4.js
@@ -52,7 +54,7 @@ zalo-for-linux/
    via `scripts/patches/`:
    - `patch-titlebar.js` — Enable native title bar
    - `patch-sqlite3.js` — Replace macOS sqlite3 with Linux binary
-   - `patch-pasting-img.js` — Patch clipboard helpers + paste handler for image paste (Wayland + X11)
+   - `patch-pasting-img.js` — Patch clipboard helpers + paste handler for text/image paste (Wayland + X11)
    - `patch-db-cross-v4.js` — Build db-cross-v4 from source + patch binding.js + spoof macOS platform ID (25 → 23)
 5. **build** — Packages everything into `dist/Zalo-<version>.AppImage`
 
@@ -64,9 +66,11 @@ for Linux compatibility. These are applied in `scripts/prepare-app.js`:
 | Patch | Why |
 |-------|-----|
 | `patch-titlebar.js` | `T,frame:!1` → `T,frame:!0` — Enable native title bar |
+| `patch-linux-startup.js` | Validate required startup files and consistently map Linux to Zalo's compatible macOS desktop client type in main, compact-app, and utility-process bundles |
+| `patch-auto-launch.js` | Lazily initialize Zalo's launcher on Linux, use the stable AppImage path, and make auto-launch IPC handlers return safe results instead of dereferencing `undefined` |
 | `patch-sqlite3.js` | macOS `node_sqlite3.node` → Linux one — Avoid "invalid ELF header" crash |
-| `patch-pasting-img.js` | Inject 4 clipboard helpers + paste event handler so `Ctrl+V` works for images. Falls back to `wl-paste` (Wayland) and `xclip` (X11) when Electron's `clipboard.readImage()` returns empty |
-| `patch-db-cross-v4.js` | Build db-cross-v4 from source, patch `binding.js` for Linux, fix `case"LINUX":return 25;` → `23` (macOS) — see comment in source for why |
+| `patch-pasting-img.js` | Replace Zalo's clipboard bridge and paste handler so `Ctrl+V` works for text, raw images, and copied image files. Falls back to `wl-paste` (Wayland) and `xclip` (X11) when Electron's clipboard API returns empty |
+| `patch-db-cross-v4.js` | Build db-cross-v4 from source and patch `binding.js` to load the Linux native addon |
 
 For more details on the native addons, see [nativelibs/README.md](./nativelibs/README.md).
 
