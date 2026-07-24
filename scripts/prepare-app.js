@@ -172,6 +172,9 @@ async function extractAppAsar() {
   const { main: patchZimage } = require('./patches/patch-zimage');
   await patchZimage();
 
+  const { main: patchZjxl } = require('./patches/patch-zjxl');
+  await patchZjxl();
+
   // const { main: patchFixImageResizeLinux } = require('./patches/patch-fix-image-resize-linux');
   // await patchFixImageResizeLinux();
 

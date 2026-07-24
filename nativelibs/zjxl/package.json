@@ -1,0 +1,12 @@
+{
+  "name": "re-impl-zjxl",
+  "version": "1.0.0",
+  "description": "Re-impl of zjxl for Linux",
+  "main": "jxl.node",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test.js"
+  },
+  "author": "DMKha",
+  "license": "ISC"
+}
