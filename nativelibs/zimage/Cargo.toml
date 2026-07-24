@@ -1,0 +1,27 @@
+[package]
+name = "zimage"
+version = "1.0.0"
+edition = "2021"
+license = "ISC"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["napi5", "async"] }
+napi-derive = "2"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "fs"] }
+globset = "0.4"
+walkdir = "2"
+libc = "0.2"
+lazy_static = "1"
+image = "0.25.10"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+strip = true

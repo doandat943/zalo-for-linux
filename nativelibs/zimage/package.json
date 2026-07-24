@@ -1,0 +1,17 @@
+{
+  "name": "re-impl-zimage",
+  "version": "1.0.0",
+  "description": "Re-impl of zimage for Linux",
+  "main": "build/Release/zimage.node",
+  "scripts": {
+    "build": "cargo build --release && cp target/release/libzimage.so build/Release/zimage.node",
+    "build:debug": "cargo build",
+    "test": "node test.js"
+  },
+  "author": "DMKha",
+  "license": "ISC",
+  "files": [
+    "index.js",
+    "build/Release/zimage.node"
+  ]
+}
