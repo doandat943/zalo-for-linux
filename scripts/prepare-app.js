@@ -181,6 +181,9 @@ async function extractAppAsar() {
   // const { main: patchFixImageResizeCanvas } = require('./patches/patch-fix-image-resize-canvas');
   // await patchFixImageResizeCanvas();
 
+  const { main: patchAutoLaunch } = require('./patches/patch-auto-launch');
+  await patchAutoLaunch();
+
   const { main: patchNotificationBadge } = require('./patches/patch-notification-badge');
   await patchNotificationBadge();
 }
