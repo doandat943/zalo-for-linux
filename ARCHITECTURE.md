@@ -31,6 +31,7 @@ zalo-for-linux/
 │       ├── patch-pasting-img.js
 │       └── patch-db-cross-v4.js
 ├── plugins/                 # Git submodules
+│   ├── userscripts/         # Userscripts manager
 │   ├── zadark/              # Dark mode extension
 │   └── zalux/               # Linux UX tweaks
 ├── nativelibs/              # Linux reimplementations of Zalo native addons
