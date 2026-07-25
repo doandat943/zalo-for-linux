@@ -26,6 +26,7 @@ let isAppQuitting = false;
 
 const zaluxPlugin = require('./plugins/zalux');
 const screenshotPlugin = require('./plugins/screenshot');
+const userscriptsPlugin = require('./plugins/userscripts');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -162,6 +163,7 @@ app.once('ready', () => {
 // Register plugins
   zaluxPlugin.register({ app, ipcMain, BrowserWindow, appDir });
   screenshotPlugin.register({ ipcMain });
+  userscriptsPlugin.register({ app, ipcMain, BrowserWindow });
 });
 
 // ---------------------------------------------------------------------------

@@ -21,6 +21,21 @@ Thanks **realdtn2** for the solution: [realdtn2/zalo-linux-2026](https://github.
 
 This project is best suited for users who need a native-feeling Zalo client on Linux and are comfortable with the technical workarounds required for full functionality.
 
+## 🧩 Userscripts manager
+
+Open **Settings → Userscripts manager** to create, paste, edit, import, delete,
+and enable or disable scripts that run inside Zalo. Tampermonkey-style metadata
+such as `@name`, `@description`, `@version`, `@match`, `@include`, and
+`@exclude` is recognized. Imported scripts may use the `.js` or `.user.js`
+extension.
+
+The compatibility layer currently provides `GM_info`, `GM_addStyle`,
+`GM_getValue`, `GM_setValue`, `GM_deleteValue`, `GM_listValues`, and
+`unsafeWindow`. Changes take effect the next time the Zalo page is loaded.
+
+> **Security:** Userscripts execute with access to the current Zalo page and
+> messages displayed in it. Only install scripts whose source you trust.
+
 ## 🌙 ZaDark Integration
 
 This project includes integrated [ZaDark](https://github.com/quaric/zadark), ZaDark is an extension that helps you enable Dark Mode, more privacy features, and additional functionality.
