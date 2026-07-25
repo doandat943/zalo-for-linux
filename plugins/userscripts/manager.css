@@ -1,0 +1,78 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f4f6f8;
+  --panel: #fff;
+  --border: #e3e8ee;
+  --text: #081c36;
+  --muted: #65788c;
+  --hover: #f0f5fb;
+  --primary: #0068ff;
+  --primary-hover: #0059db;
+  --danger: #d93025;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; height: 100vh; display: flex; overflow: hidden; background: var(--bg); color: var(--text); font: 14px -apple-system, BlinkMacSystemFont, "Inter", "Noto Sans", "Ubuntu", "Ubuntu Sans", "Segoe UI", sans-serif; }
+button, input, textarea { font: inherit; }
+.sidebar { width: 330px; flex: none; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border); }
+.brand { padding: 22px 20px 16px; display: flex; align-items: center; gap: 12px; }
+.brand-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: #e9f2ff; color: var(--primary); font: 700 14px ui-monospace, monospace; }
+.brand h1 { margin: 0; font-size: 18px; }
+.brand p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+.toolbar { padding: 0 20px 12px; display: flex; gap: 8px; }
+.button { border: 1px solid var(--border); border-radius: 8px; padding: 8px 13px; background: var(--panel); color: var(--text); cursor: pointer; font-weight: 600; }
+.button:hover { background: var(--hover); }
+.button.primary { border-color: var(--primary); background: var(--primary); color: #fff; }
+.button.primary:hover { background: var(--primary-hover); }
+.button.danger { border-color: #f2c9c6; color: var(--danger); }
+.search { margin: 0 20px 12px; height: 36px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--muted); }
+.search:focus-within { border-color: var(--primary); }
+.search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); }
+.script-list { overflow: auto; padding: 0 10px 14px; }
+.script-item { width: 100%; display: flex; align-items: center; gap: 11px; padding: 11px; border: 0; border-radius: 9px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.script-item:hover { background: var(--hover); }
+.script-item.selected { background: #e8f2ff; }
+.script-state { width: 9px; height: 9px; flex: none; border-radius: 50%; background: #adb8c4; }
+.script-state.enabled { background: #19a55a; box-shadow: 0 0 0 3px #dff5e9; }
+.script-details { min-width: 0; flex: 1; }
+.script-title, .script-description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.script-title { font-weight: 650; }
+.script-description { margin-top: 3px; color: var(--muted); font-size: 12px; }
+.empty-state { margin: auto 28px; display: none; flex-direction: column; align-items: center; text-align: center; color: var(--muted); gap: 8px; line-height: 1.5; }
+.empty-state.visible { display: flex; }
+.empty-state strong { color: var(--text); }
+.empty-icon, .welcome-icon { display: grid; place-items: center; border-radius: 16px; background: #e9f2ff; color: var(--primary); font-weight: 800; }
+.empty-icon { width: 54px; height: 54px; }
+.editor-pane { min-width: 0; flex: 1; display: flex; }
+.welcome { margin: auto; max-width: 500px; padding: 30px; text-align: center; color: var(--muted); }
+.welcome-icon { width: 72px; height: 72px; margin: 0 auto 18px; font: 700 22px ui-monospace, monospace; }
+.welcome h2 { color: var(--text); }
+.warning { margin-top: 26px; padding: 12px; border-radius: 8px; background: #fff7df; color: #7b5d00; font-size: 12px; }
+.editor { min-width: 0; width: 100%; display: flex; flex-direction: column; }
+.hidden { display: none !important; }
+.editor-header { padding: 18px 22px; display: flex; align-items: flex-end; gap: 20px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.name-field { min-width: 0; flex: 1; }
+.name-field label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.name-field input { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; outline: none; background: var(--bg); color: var(--text); }
+.name-field input:focus { border-color: var(--primary); }
+.toggle-label { display: flex; align-items: center; gap: 9px; cursor: pointer; }
+.toggle-label input { position: absolute; opacity: 0; }
+.toggle-label i { position: relative; width: 38px; height: 22px; border-radius: 12px; background: #aeb8c2; transition: .15s; }
+.toggle-label i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .15s; }
+.toggle-label input:checked + i { background: var(--primary); }
+.toggle-label input:checked + i::after { transform: translateX(16px); }
+.editor-meta { padding: 9px 22px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+#script-code { min-height: 0; flex: 1; resize: none; border: 0; outline: 0; padding: 18px 22px; background: #111827; color: #d9e5f5; font: 13px/1.55 ui-monospace, SFMono-Regular, "JetBrainsMono Nerd Font", Hack, "Ubuntu Sans Mono", "Ubuntu Mono", "Ubuntu Monospace", Consolas, monospace; tab-size: 2; }
+.editor-footer { min-height: 62px; padding: 12px 20px; display: flex; align-items: center; gap: 18px; background: var(--panel); border-top: 1px solid var(--border); }
+.editor-footer > span { flex: 1; color: var(--muted); font-size: 11px; }
+.actions { display: flex; gap: 8px; }
+.toast { position: fixed; left: 50%; bottom: 78px; padding: 10px 15px; border-radius: 8px; background: #19324d; color: #fff; opacity: 0; pointer-events: none; transform: translate(-50%, 8px); transition: .2s; box-shadow: 0 8px 30px #0003; }
+.toast.visible { opacity: 1; transform: translate(-50%, 0); }
+.toast.error { background: #b3261e; }
+
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111923; --panel: #19232f; --border: #2c3a49; --text: #e8eef5; --muted: #94a7ba; --hover: #243447; }
+  .script-item.selected { background: #163a68; }
+  .warning { background: #3a321d; color: #e8cb70; }
+}
