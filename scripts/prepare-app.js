@@ -186,6 +186,12 @@ async function extractAppAsar() {
 
   const { main: patchNotificationBadge } = require('./patches/patch-notification-badge');
   await patchNotificationBadge();
+
+  const { main: patchXdgUserDirs } = require('./patches/patch-xdg-user-dirs');
+  await patchXdgUserDirs();
+
+  const { main: patchShellOpenLinux } = require('./patches/patch-shell-open-linux');
+  await patchShellOpenLinux();
 }
 
 function commandExists(command) {
