@@ -188,6 +188,10 @@ async function main() {
   const bundlePaths = BUNDLE_DIRS
     .flatMap(findJavaScriptFiles)
     .filter((filePath) => {
+      if (filePath.includes('utility-process-media.js')) {
+        logger.dim(`Skipping ${path.relative(APP_DIR, filePath)} (excluded process)`);
+        return false;
+      }
       const content = fs.readFileSync(filePath, 'utf8');
       return content.includes('getDefaultZaloReceivedFiles') &&
         content.includes('createAppPathManager');
