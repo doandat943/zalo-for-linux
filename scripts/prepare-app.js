@@ -169,6 +169,9 @@ async function extractAppAsar() {
   const { main: patchFileUtils } = require('./patches/patch-file-utils');
   await patchFileUtils();
 
+  const { main: patchMp4thumb } = require('./patches/patch-mp4thumb');
+  await patchMp4thumb();
+
   const { main: patchZimage } = require('./patches/patch-zimage');
   await patchZimage();
 
@@ -187,8 +190,8 @@ async function extractAppAsar() {
   const { main: patchNotificationBadge } = require('./patches/patch-notification-badge');
   await patchNotificationBadge();
 
-  const { main: patchXdgUserDirs } = require('./patches/patch-xdg-user-dirs');
-  await patchXdgUserDirs();
+  // const { main: patchXdgUserDirs } = require('./patches/patch-xdg-user-dirs');
+  // await patchXdgUserDirs();
 
   const { main: patchShellOpenLinux } = require('./patches/patch-shell-open-linux');
   await patchShellOpenLinux();

@@ -1,0 +1,15 @@
+[package]
+name = "mp4thumb"
+version = "1.0.0"
+edition = "2021"
+license = "ISC"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+mp4 = "0.14"
+napi = { version = "2.16", default-features = false, features = ["napi5", "async"] }
+napi-derive = "2.16"
+openh264 = "0.6"
