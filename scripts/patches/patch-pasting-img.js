@@ -128,6 +128,9 @@ async function main() {
   // Paste handler. Prepended to preload-render.js, sits BEFORE the
   // minified `__ZaBUNDLENAME__` line, so it can stay readable.
   const pasteHandler = `// CLIPBOARD IMAGE PASTE FIX
+// IMPORTANT: text paste must remain entirely synchronous and native. Reading an
+// image from Electron's clipboard here can be expensive enough to make Chromium
+// lose a large text paste, especially when the clipboard offers rich formats.
 // Cleanup old temp files on startup
 try {
     const _fs = require('fs'), _os = require('os'), _path = require('path');
@@ -136,6 +139,16 @@ try {
     });
 } catch(_) {}
 window.addEventListener('DOMContentLoaded', () => {
+    function clipboardContainsText(e) {
+        try {
+            const data = e.clipboardData;
+            if (!data) return false;
+            const types = Array.from(data.types || []);
+            const hasImage = types.some(type => type.startsWith('image/'));
+            if (hasImage) return false;
+            return Boolean(data.getData('text/plain'));
+        } catch (_) { return false; }
+    }
     async function tryPasteImage() {
         if (!window.$zelectronNative) return;
         try {
@@ -169,12 +182,16 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     let _lastPaste = 0;
     document.addEventListener('paste', async (e) => {
+        // Do not call any Electron clipboard/image API for a normal text paste.
+        // The application's own editor must receive and handle this event directly.
+        if (clipboardContainsText(e)) return;
         const now = Date.now();
         if (now - _lastPaste < 200) return;
         _lastPaste = now;
         await tryPasteImage();
     }, true);
 });
+// END CLIPBOARD IMAGE PASTE FIX
 `;
 
   const helpers = minify(helpersSource);
@@ -197,9 +214,22 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    if (file === 'preload-render.js' && !content.includes('tryPasteImage')) {
-      content = pasteHandler + content;
-      logger.dim(`Patched tryPasteImage listener in ${file}`);
+    if (file === 'preload-render.js') {
+      const handlerStart = content.indexOf('// CLIPBOARD IMAGE PASTE FIX');
+      const bundleStart = content.indexOf('__ZaBUNDLENAME__="preload-render"');
+
+      if (handlerStart !== -1 && bundleStart > handlerStart) {
+        // Replace older versions of this patch as well as the current version.
+        // This keeps repeated prepare-app runs idempotent and rolls the text-paste
+        // fix into an already-prepared app directory.
+        content = content.slice(0, handlerStart) + pasteHandler + content.slice(bundleStart);
+        logger.dim(`Updated tryPasteImage listener in ${file}`);
+      } else if (handlerStart === -1) {
+        content = pasteHandler + content;
+        logger.dim(`Patched tryPasteImage listener in ${file}`);
+      } else {
+        logger.warn(`Bundle marker not found in ${file}, skipping paste handler update`);
+      }
     }
 
     fs.writeFileSync(filePath, content, 'utf8');
