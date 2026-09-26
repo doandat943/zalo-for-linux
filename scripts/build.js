@@ -6,6 +6,7 @@ const logger = require('./utils/logger');
 const BASE_DIR = path.join(__dirname, '..');
 const APP_DIR = path.join(BASE_DIR, 'app');
 const DIST_DIR = path.join(BASE_DIR, 'dist');
+const TEMP_DIR = path.join(BASE_DIR, 'temp');
 
 let ZALO_VERSION = null;
 const builtFiles = [];
@@ -96,23 +97,40 @@ async function bundleWineRuntime() {
     return;
   }
 
+  if (!fs.existsSync(TEMP_DIR)) {
+    fs.mkdirSync(TEMP_DIR, { recursive: true });
+  }
+
   const target = path.join(APP_DIR, 'native', 'wine-runtime');
   if (fs.existsSync(path.join(target, 'bin', 'wine'))) {
     logger.dim('wine runtime already bundled, skipping download');
     return;
   }
-  const tarball = path.join(APP_DIR, 'native', 'wine-bundle.tar.xz');
-  logger.info('Downloading portable wine for the Full variant...');
+  const tarball = path.join(TEMP_DIR, 'wine-bundle.tar.xz');
   try {
-    execSync(`curl -L --fail -o "${tarball}" "${WINE_DOWNLOAD_URL}"`, {
-      cwd: BASE_DIR, stdio: 'inherit'
-    });
+    if (!fs.existsSync(tarball)) {
+      logger.info('Downloading portable wine for the Full variant...');
+      try {
+        execSync(`curl -L --fail -o "${tarball}" "${WINE_DOWNLOAD_URL}"`, {
+          cwd: BASE_DIR, stdio: 'inherit'
+        });
+      } catch(err) {
+        // remove partial downloads
+        if (fs.existsSync(tarball)) {
+          fs.unlinkSync(tarball);
+        }
+        throw new Error(`Download failed: ${err.message}`);
+      }
+    } else {
+      logger.info('Using cached portable wine tarball from temp directory...');
+    }
     fs.mkdirSync(target, { recursive: true });
     execSync(`tar -xf "${tarball}" -C "${target}" --strip-components=1`, {
       cwd: BASE_DIR, stdio: 'pipe'
     });
-  } finally {
-    try { fs.unlinkSync(tarball); } catch (e) { /* none */ }
+  } catch (error) {
+    logger.error('Failed to bundle wine runtime:', error.message);
+    throw error;
   }
   if (!fs.existsSync(path.join(target, 'bin', 'wine'))) {
     throw new Error('wine binary not found after extract');
