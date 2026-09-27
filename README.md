@@ -24,7 +24,7 @@ with an older build, turn it off and on again to update the entry.
 You can also pass the flag yourself (`--start-hidden` works too):
 
 ```bash
-/path/to/Zalo.AppImage --hidden
+/path/to/zalo --hidden
 ```
 
 Open the window from the tray icon, by clicking a notification, or by launching
@@ -69,9 +69,30 @@ This project includes integrated [ZaDark](https://github.com/quaric/zadark), ZaD
 
 ### Usage
 
-We strongly recommend using **Gear Lever** to integrate the AppImage perfectly into your system menu.
+We strongly recommend using **Gear Lever** or **AM** to integrate the AppImage perfectly into your system menu.
 
-**Note:** Zalo for Linux comes with a built-in updater. Whenever a new release is available, you will be prompted within the Zalo app to download and apply the update seamlessly without leaving the application.
+**Note:** Zalo for Linux comes with embed update info. you can 
+
+- For AM users:
+
+1. Install **AM** from [AM's guide](https://github.com/ivan-hc/AM#using-the-am-installer-script-to-choose-between-local-and-system-wide-installation)
+2. Run this command to install Zalo:
+   ```bash
+   am -i zalo
+   ```
+   *Note: Replace `am` with `appman` if you chose to install `appman`.*
+3. A prompt like this will appear:
+   <img width="747" height="600" alt="installer" src="https://raw.githubusercontent.com/VN-Linux-Family/zalo-for-linux/refs/heads/main/sample/am-guide.png" />
+
+   *You can choose what variants you like from this, AM will download the correct version for you.*
+4. The app is now installed. You can now go to your system's application launcher to launch Zalo.
+
+   Or run from the command line:
+   ```bash
+   zalo
+   ```
+
+- For Gear Lever users:
 
 1.  Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
 2.  Install **Gear Lever** from [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever).

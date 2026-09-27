@@ -177,7 +177,7 @@ jobs:
         body: |
           ## 🚀 How to use
 
-          It is recommended to use [Gear Lever](https://github.com/mijorus/gearlever) to manage and integrate the AppImage.
+          It is recommended to use [Gear Lever](https://github.com/mijorus/gearlever) or [AM](https://github.com/ivan-hc/AM) to manage and integrate the AppImage.
 
           Choose the appropriate AppImage for your system architecture below (x64 or aa64) and download it.
           
@@ -187,10 +187,10 @@ jobs:
           ```
 
           > 🍷 **Full variants** (portable wine bundled inside — the call feature, voice/video/share screen, works right after the first launch with no download; larger files ~430MB):
-          > - `*-Full-x86_64.AppImage` (with ZaDark)
-          > - `*-PlainFull-x86_64.AppImage` (without ZaDark)
+          > - `Zalo-<ver>+ZaDark-<zadark_ver>-<commit_hash>-Full-x86_64.AppImage` (with ZaDark)
+          > - `Zalo-<ver>-Original-<commit_hash>-Full-x86_64.AppImage` (without ZaDark)
 
-          **NOTE: DO NOT download the files with `.AppImage.zsync`, they are only used for incremental updates and cannot run directly.**
+          **NOTE: DO NOT download the files with `.AppImage.zsync`, they are only used for delta updates and cannot run directly.**
 
           ## 📋 System Requirements
           - Linux x64 or aa64
