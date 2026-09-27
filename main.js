@@ -104,11 +104,18 @@ function isPrimaryInstance() {
 
 app.on('before-quit', () => {
   isAppQuitting = true;
-  if (isPrimaryInstance()) zcallBridgePlugin.shutdown();
   if (tray) {
     tray.destroy();
     tray = null;
   }
+});
+
+// Zalo cancels the first quit to let the renderer save its state, then quits
+// again, so 'before-quit' fires twice. Tearing the call engine down there
+// (pkill + wineserver -k, ~3 s, synchronous) ran twice and held up Zalo's own
+// quit flow. 'will-quit' fires once, after every window is closed.
+app.on('will-quit', () => {
+  if (isPrimaryInstance()) zcallBridgePlugin.shutdown();
 });
 
 // Registered before Zalo's bootstrap, so this runs before Zalo's own

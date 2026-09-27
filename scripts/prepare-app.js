@@ -193,6 +193,9 @@ async function extractAppAsar() {
   const { main: patchAutoLaunch } = require('./patches/patch-auto-launch');
   await patchAutoLaunch();
 
+  const { main: patchQuitNoShow } = require('./patches/patch-quit-no-show');
+  await patchQuitNoShow();
+
   const { main: patchNotificationBadge } = require('./patches/patch-notification-badge');
   await patchNotificationBadge();
 
