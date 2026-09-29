@@ -6,6 +6,11 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'          
+      - '**/.gitignore'
+      - '**/LICENSE'   
+      - '**/LICENSE.*'
   workflow_dispatch:
     inputs:
       zalo_version:
