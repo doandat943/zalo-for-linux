@@ -59,7 +59,7 @@ echo "Packaging $OUTNAME..."
 
 # Cleanup and chmod the output file
 rm -rf "$APPDIR" "${DIST_DIR}/appinfo"
-chmod +x "$OUTNAME" || true
+chmod -x "$OUTNAME" || true
 
 echo "=== Build completed: ${DIST_DIR}/${OUTNAME} ==="
 exit 

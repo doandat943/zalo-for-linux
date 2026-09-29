@@ -14,56 +14,11 @@ Thanks **realdtn2** for the solution: [realdtn2/zalo-linux-2026](https://github.
 
 This project is best suited for users who need a native-feeling Zalo client on Linux and are comfortable with the technical workarounds required for full functionality.
 
-## 🙈 Start hidden in the tray
+## ✨ Features in this project
 
-When **Settings → Launch Zalo on startup** is enabled, Zalo starts minimized
-to the system tray at login. The autostart entry it writes to
-`~/.config/autostart/` launches it with `--hidden`. If you enabled the setting
-with an older build, turn it off and on again to update the entry.
+This project added some features in the app, that the official version doesn't have equivalents.
 
-You can also pass the flag yourself (`--start-hidden` works too):
-
-```bash
-/path/to/zalo --hidden
-```
-
-Open the window from the tray icon, by clicking a notification, or by launching
-Zalo again. If no system tray is available, the flag is ignored so the window
-is never unreachable.
-
-## 🧩 Userscripts manager
-
-Open **Settings → Userscripts manager** to create, paste, edit, import, delete,
-and enable or disable scripts that run inside Zalo. Tampermonkey-style metadata
-such as `@name`, `@description`, `@version`, `@match`, `@include`, and
-`@exclude` is recognized. Imported scripts may use the `.js` or `.user.js`
-extension.
-
-The compatibility layer currently provides `GM_info`, `GM_addStyle`,
-`GM_getValue`, `GM_setValue`, `GM_deleteValue`, `GM_listValues`, and
-`unsafeWindow`. Changes take effect the next time the Zalo page is loaded.
-
-> **Security:** Userscripts execute with access to the current Zalo page and
-> messages displayed in it. Only install scripts whose source you trust.
-
-## 🌙 ZaDark Integration
-
-This project includes integrated [ZaDark](https://github.com/quaric/zadark), ZaDark is an extension that helps you enable Dark Mode, more privacy features, and additional functionality.
-
-**ZaDark helps you experience Zalo 🔒 more privately ✨ more personalized.**
-
-### Features
-
-- 🌙 **Dark Mode optimized specifically for Zalo** - Complete dark theme tailored for Zalo interface
-- 🆃 **Customize fonts and font sizes** - Personalize text appearance to your preference
-- 🖼️ **Custom chat backgrounds** - Set personalized backgrounds for conversations
-- 🔤 **Quick message translation** - Instantly translate messages to your preferred language
-- 😊 **Express emotions with 80+ Emojis** - Enhanced emoji reactions for messages
-- 🔒 **Anti-message peeking protection** - Prevent others from secretly viewing your messages
-- 👁️ **Hide status indicators** - Hide "typing", "delivered" and "read" status from others
-- 📱 **Native Integration** - Seamlessly integrated during build process
-
-> **Note:** ZaDark is licensed under MPL-2.0 and is developed by [Quaric](https://zadark.com). The setup process automatically prepares ZaDark, and build process integrates it seamlessly!
+✨ **For the full list of the features that included in this project, see [FEATURES.md](./FEATURES.md).**
 
 ## 🚀 Quick Start
 
@@ -71,7 +26,7 @@ This project includes integrated [ZaDark](https://github.com/quaric/zadark), ZaD
 
 We strongly recommend using **Gear Lever** or **AM** to integrate the AppImage perfectly into your system menu.
 
-**Note:** Zalo for Linux comes with embed update info. you can 
+**Note:** Zalo for Linux comes with embed update info. You don't need to setup any update infomations for updating the apps.
 
 - For AM users:
 
@@ -82,7 +37,7 @@ We strongly recommend using **Gear Lever** or **AM** to integrate the AppImage p
    ```
    *Note: Replace `am` with `appman` if you chose to install `appman`.*
 3. A prompt like this will appear:
-   <img width="747" height="600" alt="installer" src="https://raw.githubusercontent.com/VN-Linux-Family/zalo-for-linux/refs/heads/main/sample/am-guide.png" />
+   <img width="747" height="600" alt="installer" src="./sample/am-guide.png" />
 
    *You can choose what variants you like from this, AM will download the correct version for you.*
 4. The app is now installed. You can now go to your system's application launcher to launch Zalo.
@@ -91,14 +46,25 @@ We strongly recommend using **Gear Lever** or **AM** to integrate the AppImage p
    ```bash
    zalo
    ```
+5. How to update:
+   You just need to run this command, it will automatically update all your AM packages (including Zalo) for you:
+   ```bash
+   am -u
+   ```
 
 - For Gear Lever users:
 
-1.  Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
-2.  Install **Gear Lever** from [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever).
-3.  Open **Gear Lever**.
-4.  Click the **"Open"** button in the top-left corner and select the `.AppImage` file you downloaded.
-5.  The app will now appear in Gear Lever. Click the **"Unlock"** button, then choose **"Move to the app menu"** to integrate it into your system's application launcher.
+1. Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
+2. Install **Gear Lever** from [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever).
+3. Open **Gear Lever**.
+4. Click the **"Open"** button in the top-left corner and select the `.AppImage` file you downloaded.
+5. The app will now appear in Gear Lever. Click the **"Unlock"** button, then choose **"Move to the app menu"** to integrate it into your system's application launcher.
+6. How to update:
+   - Open **Gear Lever**.
+   - If any updates is available, the button **No updates available** will turn to **Update**, just simply click to the button and Zalo is updated.
+
+*NOTE: Remember to quit the app and relaunch again after updates, for new changes can be applied in your side.* 
+   
 
 ### Build from Source
 
@@ -132,9 +98,8 @@ npm run main
 
 The final AppImage will be in the `dist/` directory.
 
-> For a detailed walkthrough of the build pipeline, scripts, environment
-> variables, and how to add new patches, see
-> [DEVELOPMENT.md](./DEVELOPMENT.md).
+> For a detailed walkthrough of the build pipeline, scripts, environment variables, and how to add new patches, see [`DEVELOPMENT.md`](./DEVELOPMENT.md).
+
 
 ## ⚙️ How It Works
 
@@ -146,14 +111,11 @@ This project is not a from-scratch rewrite of Zalo. It works by:
 4.  Wrapping the extracted application in a minimal, Linux-compatible Electron shell.
 5.  Using `electron-builder`, then `quick-sharun` to package everything into a single, portable `AppImage` file.
 
-For a deeper dive into the build pipeline and patching strategy, see
-[ARCHITECTURE.md](./ARCHITECTURE.md).
+For a deeper dive into the build pipeline and patching strategy, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
-For native addons (db-cross-v4, etc.), see
-[`nativelibs/README.md`](./nativelibs/README.md).
+For native addons (db-cross-v4, etc.), see [`nativelibs/README.md`](./nativelibs/README.md).
 
-For the `zcall` bridge, see
-- [zcall-bridge/README.md](./zcall-bridge/README.md)
+For the `zcall` bridge, see [`zcall-bridge/README.md`](./zcall-bridge/README.md)
 
 ## 🐛 Troubleshooting & Debugging
 
