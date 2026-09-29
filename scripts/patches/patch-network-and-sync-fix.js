@@ -18,12 +18,15 @@ const APP_DIR = path.join(__dirname, '..', '..', 'app');
 
 /**
  * Patch Zalo network state detection (gwig) and sync controller routing:
- * 1. Bypass CORS XMLHttpRequest failure to google.com in gwig network check,
- *    forcing getStateNetwork() to return CONNECTED so sync and calls proceed.
- *    The manager's own state machine keeps reading stateCur, and its ping
- *    follows navigator.onLine, so after a network drop (or suspend) it can go
- *    DISCONNECT -> CHECKING -> CONNECTED again and signal the socket and UI to
- *    reconnect instead of staying stuck in CHECKING.
+ * 1. Force getStateNetwork() to return CONNECTED for OUTSIDE callers so sync and
+ *    calls proceed, while the manager's own state machine keeps reading the real
+ *    stateCur. Its connectivity probe (_pingToDomain) is left as the original
+ *    real XHR check — NOT stubbed to always-resolve (upstream #87, never detects
+ *    offline) and NOT tied to navigator.onLine (stays false after resume from
+ *    suspend, leaving it stuck offline). The real probe fails when wifi is off
+ *    and succeeds once the link is back after resume, so the manager goes
+ *    DISCONNECT -> CHECKING -> CONNECTED again in both cases and re-signals the
+ *    socket and UI, instead of staying stuck showing "no internet".
  * 2. Remove premature NO_NETWORK (1106) throw in main-startup.
  * 3. Route Sync Messages to SyncMessageController (V1) which sends push confirmation
  *    to mobile devices and saves message data via db-cross-v4 / sqlite3.
@@ -81,8 +84,13 @@ async function main() {
     ['networkConnected(){this.getStateNetwork()!==u.CONNECTED&&', 'networkConnected(){this.stateCur!==u.CONNECTED&&'],
     ['const n=()=>{this.getStateNetwork()===u.CHECKING?', 'const n=()=>{this.stateCur===u.CHECKING?'],
     ['t<=0?(this.getStateNetwork()===u.CONNECTED?', 't<=0?(this.stateCur===u.CONNECTED?'],
-    ['getStateNetwork(){return this.stateCur}', 'getStateNetwork(){return u.CONNECTED}'],
-    ['_pingToDomain(e){return this._pingToDomainPC(e)}', '_pingToDomain(e){return navigator.onLine?Promise.resolve():Promise.reject()}']
+    ['getStateNetwork(){return this.stateCur}', 'getStateNetwork(){return u.CONNECTED}']
+    // NOTE: _pingToDomain is deliberately NOT replaced. The original code probes
+    // the real network (XHR). Both the upstream #87 stub (always resolve -> never
+    // detects offline) and the earlier navigator.onLine variant (stays false after
+    // resume from suspend -> stuck offline) were wrong. The real probe fails when
+    // wifi is off and succeeds once the link is back after resume, so CHECKING
+    // resolves correctly in both cases.
   ];
 
   // 1. main-startup bundle in lazy/
