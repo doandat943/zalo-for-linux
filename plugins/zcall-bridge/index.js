@@ -431,13 +431,15 @@ function showAskWindow(failedWine) {
   const { ipcMain } = require('electron');
   const win = new BrowserWindowModule({
     width: 540,
-    height: 280,
+    height: 260,
+    useContentSize: true,
     frame: false,
     resizable: false,
     movable: true,
     center: true,
     alwaysOnTop: true,
     skipTaskbar: false,
+    backgroundColor: '#232526',
     // Tiny internal window with static HTML — node integration is safe here.
     webPreferences: { contextIsolation: false, nodeIntegration: true }
   });
@@ -446,29 +448,27 @@ function showAskWindow(failedWine) {
     ? 'Wine trên máy bạn không tương thích với tính năng gọi (không chạy được ứng dụng 32-bit). Tải bản Wine tương thích?'
     : 'Tính năng gọi điện cần Wine. Tải và bật ngay bây giờ?';
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:sans-serif;background:#1f1f1f;color:#eee;margin:0;padding:20px 24px;-webkit-app-region:drag}
-    h3{margin:0 0 8px;font-size:16px}
-    p{font-size:13px;color:#ccc;margin:0 0 10px;line-height:1.45}
-    #url{font-size:11px;color:#6ab;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;cursor:pointer;margin-bottom:14px;-webkit-app-region:no-drag}
-    label{font-size:13px;color:#ccc;display:block;margin-bottom:16px;-webkit-app-region:no-drag}
-    .row{display:flex;justify-content:flex-end;gap:10px;-webkit-app-region:no-drag}
-    button{font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer}
-    #yes{background:#0a6e3c;color:#fff}
-    #no{background:#3a3a3a;color:#eee}
+    ${DIALOG_CSS}
+    ${DOWNLOAD_CSS}
+    .check{display:flex;align-items:center;gap:8px;margin:0 0 4px;color:var(--muted);cursor:pointer}
+    .check input{margin:0;accent-color:var(--accent)}
+    footer{justify-content:space-between}
   </style></head><body>
-    <h3>Zalo — Tính năng gọi điện</h3>
-    <p>${headLine}<br>
-       Sẽ tải ~96MB về lưu trong dữ liệu của Zalo — không cần quyền quản trị,
-       không ảnh hưởng hệ thống.</p>
-    <div id="url" title="Mở nguồn tải trong trình duyệt">Nguồn tải: ${downloadUrl}</div>
-    <label><input type="checkbox" id="never"> Không hỏi lại lần sau nếu không tải</label>
-    <div class="row" style="justify-content:space-between">
-      <button id="browse">Chọn file wine có sẵn…</button>
-      <span>
-        <button id="no">Để sau</button>
-        <button id="yes">Tải và bật ngay</button>
+    <header><h1>Tính năng gọi điện</h1></header>
+    <main>
+      <p class="lead">${headLine}<br>
+        Sẽ tải ~96MB về lưu trong dữ liệu của Zalo — không cần quyền quản trị,
+        không ảnh hưởng hệ thống.</p>
+      <div id="url" title="Mở nguồn tải trong trình duyệt">Nguồn tải: ${downloadUrl}</div>
+      <label class="check"><input type="checkbox" id="never"> Không hỏi lại lần sau nếu không tải</label>
+    </main>
+    <footer>
+      <button class="btn" id="browse">Chọn file wine có sẵn…</button>
+      <span class="actions">
+        <button class="btn" id="no">Để sau</button>
+        <button class="btn primary" id="yes">Tải và bật ngay</button>
       </span>
-    </div>
+    </footer>
     <script>
       const {ipcRenderer, shell} = require('electron');
       function answer(download) {
@@ -526,31 +526,37 @@ function showAskWindow(failedWine) {
 function showProgressWindow() {
   const win = new BrowserWindowModule({
     width: 520,
-    height: 165,
+    height: 170,
+    useContentSize: true,
     frame: false,
     resizable: false,
     movable: true,
     alwaysOnTop: true,
+    backgroundColor: '#232526',
     // Tiny internal window with static HTML — node integration is safe here.
     webPreferences: { contextIsolation: false, nodeIntegration: true }
   });
   const downloadUrl = process.env.ZCALL_WINE_DOWNLOAD_URL || WINE_DOWNLOAD_URL;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:sans-serif;background:#1f1f1f;color:#eee;margin:0;padding:18px 22px;-webkit-app-region:drag}
-    h3{margin:0 0 6px;font-size:15px} p{margin:0 0 12px;font-size:12px;color:#aaa}
-    progress{width:100%;height:14px}
-    #label{font-size:12px;color:#aaa;margin-top:8px}
-    #url{font-size:11px;color:#6ab;margin-top:8px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;cursor:pointer}
+    ${DIALOG_CSS}
+    ${DOWNLOAD_CSS}
+    body{-webkit-app-region:drag}
+    .track{height:6px;border-radius:99px;background:var(--hover);overflow:hidden}
+    #bar{width:0;height:100%;border-radius:99px;background:var(--accent);transition:width .3s}
+    #label{margin-top:8px;font-size:12.5px;color:var(--muted)}
+    #url{margin:6px 0 0}
   </style></head><body>
-    <h3>Zalo — Tính năng gọi điện</h3>
-    <p>Đang tải Wine (~96MB), vui lòng chờ…</p>
-    <progress id="bar" max="100" value="0"></progress>
-    <div id="label">0%</div>
-    <div id="url" title="Mở nguồn tải trong trình duyệt">${downloadUrl}</div>
+    <header><h1>Tính năng gọi điện</h1></header>
+    <main>
+      <p class="lead">Đang tải Wine (~96MB), vui lòng chờ…</p>
+      <div class="track"><div id="bar"></div></div>
+      <div id="label">0%</div>
+      <div id="url" title="Mở nguồn tải trong trình duyệt">${downloadUrl}</div>
+    </main>
     <script>
       const {ipcRenderer, shell} = require('electron');
       ipcRenderer.on('progress', (e, pct, text) => {
-        document.getElementById('bar').value = pct;
+        document.getElementById('bar').style.width = pct + '%';
         document.getElementById('label').textContent = text;
       });
       document.getElementById('url').onclick = () => {
@@ -1111,15 +1117,15 @@ function showBrokenWineDialog(winePath) {
   });
 }
 
-// Shared look of the settings and first-run windows: system font, light
-// and dark themes.
+// Shared look of the call windows (settings, first run, download ask and
+// progress): ZaDark's palette, font and blue accent, light and dark themes.
 const DIALOG_CSS = `
-    :root{--bg:#1e1f22;--card:#2a2b30;--hover:#33343a;--border:#3a3b41;--text:#ececed;--muted:#a3a6ad;
-      --accent:#0a7cff;--accent-bg:rgba(10,124,255,.14);--ok:#30a46c;--warn:#e5484d;--danger:#ff6b6b;--input:#17181b}
-    @media (prefers-color-scheme: light){:root{--bg:#f5f6f8;--card:#fff;--hover:#eef0f3;--border:#dcdfe4;--text:#1d2129;
-      --muted:#5f6670;--accent-bg:rgba(10,124,255,.08);--danger:#d93025;--input:#fff}}
+    :root{color-scheme:dark;--bg:#232526;--card:#2d3031;--hover:#343637;--border:#464849;--text:#e5e5e5;--muted:#9e9f9f;
+      --accent:#0e70ff;--accent-hover:#035bdc;--accent-text:#3989ff;--accent-bg:#0f2345;--input:#2d3031;--danger:#ff6b6b}
+    @media (prefers-color-scheme: light){:root{color-scheme:light;--bg:#fff;--card:#fbfbfd;--hover:#eeeff2;--border:#e1e4ea;--text:#001a33;
+      --muted:#72808e;--accent-text:#0068ff;--accent-bg:#e5efff;--input:#f4f5f7;--danger:#d93025}}
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Cantarell,"Noto Sans",Ubuntu,"Segoe UI",sans-serif;user-select:none}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "Open Sans",system-ui,Cantarell,"Noto Sans",Ubuntu,sans-serif;user-select:none}
     header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px 20px;-webkit-app-region:drag}
     h1{margin:0;font-size:16px;font-weight:600}
     h2{margin:0 0 8px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
@@ -1129,35 +1135,43 @@ const DIALOG_CSS = `
     .icon{width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:16px;cursor:pointer}
     .icon:hover{background:var(--hover);color:var(--text)}
     .modes{display:flex;flex-direction:column;gap:6px}
-    .mode{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);cursor:pointer}
+    .mode{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);cursor:pointer}
     .mode:hover{background:var(--hover)}
     .mode input{margin:3px 0 0;accent-color:var(--accent);width:16px;height:16px;flex:none}
     .mode b{display:block;font-weight:600}
     .mode small{display:block;color:var(--muted);font-size:12.5px;margin-top:1px}
     .mode:has(input:checked){border-color:var(--accent);background:var(--accent-bg)}
-    .note{min-height:18px;margin:6px 2px 0;font-size:12.5px;color:var(--accent)}
-    .status{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);margin-bottom:8px}
-    .badge{flex:none;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;color:#fff;background:var(--ok)}
-    .badge.missing{background:var(--warn)}
+    .note{min-height:18px;margin:6px 2px 0;font-size:12.5px;color:var(--accent-text)}
+    .status{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);margin-bottom:8px}
+    .badge{flex:none;font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;color:var(--accent-text);border:1px solid var(--accent-text)}
+    .badge.missing{color:var(--muted);border-color:var(--border)}
     .status .info{flex:1;min-width:0}
     .btn.small{flex:none;padding:5px 10px;font-size:13px}
     .result{margin:-2px 2px 8px;font-size:12.5px;white-space:pre-wrap;user-select:text}
     .result:empty{display:none}
-    .result.ok{color:var(--ok)}
+    .result.ok{color:var(--accent-text)}
     .result.fail{color:var(--danger)}
     code{display:block;font:13px/1.4 ui-monospace,"DejaVu Sans Mono",monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text}
     .status small{display:block;color:var(--muted);font-size:12px}
     .pathrow{display:flex;gap:8px;margin-bottom:8px}
     .pathrow input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input);color:var(--text);user-select:text}
-    .pathrow input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+    .pathrow input:focus{outline:none;border-color:var(--accent)}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-    .btn{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);cursor:pointer;white-space:nowrap}
-    .btn:hover{background:var(--hover)}
-    .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-    .btn.primary:hover{filter:brightness(1.1)}
-    .btn.danger{color:var(--danger)}
+    .btn{padding:8px 12px;border:0;border-radius:8px;background:var(--hover);color:var(--text);cursor:pointer;white-space:nowrap;transition:background .25s}
+    .btn:hover{background:var(--border)}
+    .btn.primary{background:var(--accent);color:#fff}
+    .btn.primary:hover{background:var(--accent-hover)}
+    .btn.danger:hover{color:var(--danger)}
     #wineSec.dim{opacity:.55}
     footer{display:flex;justify-content:flex-end;padding:4px 20px 18px}
+`;
+
+// Extra rules shared by the download ask and progress windows.
+const DOWNLOAD_CSS = `
+    .lead{margin:0 0 10px;color:var(--muted)}
+    #url{font-size:12px;color:var(--accent-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;margin-bottom:12px;-webkit-app-region:no-drag}
+    #url:hover{text-decoration:underline}
+    .actions{display:flex;gap:8px}
 `;
 
 let setupWin = null;
@@ -1189,7 +1203,7 @@ function showFirstRunWindow(userDataDir) {
     resizable: false,
     center: true,
     alwaysOnTop: true,
-    backgroundColor: '#1e1f22',
+    backgroundColor: '#232526',
     webPreferences: { contextIsolation: false, nodeIntegration: true }
   });
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -1253,7 +1267,7 @@ function openSetupDialog({ userDataDir }) {
     resizable: false,
     center: true,
     alwaysOnTop: true,
-    backgroundColor: '#1e1f22',
+    backgroundColor: '#232526',
     webPreferences: { contextIsolation: false, nodeIntegration: true }
   });
   setupWin = win;

@@ -1,7 +1,8 @@
 // Injected into the Zalo window by plugins/zcall-bridge (injectSwitch).
-// Adds a "Tính năng gọi điện" switch to the ZaDark popup: green = on,
-// red = off (#80), and a "Cài đặt gọi điện" entry to Zalo's own settings
-// menu, which every variant has (the tray is invisible on stock GNOME). The page cannot reach the main process, so a change is
+// Adds a "Tính năng gọi điện" switch to the ZaDark popup, styled like
+// ZaDark's own switches (#80), and a "Cài đặt gọi điện" entry to Zalo's own
+// settings menu, which every variant has (the tray is invisible on stock
+// GNOME). The page cannot reach the main process, so a change is
 // signalled through the window title (as the userscripts menu does); the
 // main process pushes the state back with window.__zcallSwitchUpdate().
 (function () {
@@ -12,11 +13,9 @@
   let state = window.__zcallSwitchState || { enabled: true, note: '' };
 
   const style = document.createElement('style');
-  // ZaDark's own rules are scoped under #zadark-popup: match that and add
-  // the switch's id so these win.
+  // ZaDark's own rules are scoped under #zadark-popup: match that so these
+  // win. The switch itself keeps ZaDark's colors.
   style.textContent = [
-    '#zadark-popup #js-switch-zcall + .zadark-switch__slider{background-color:#e5484d}',
-    '#zadark-popup #js-switch-zcall:checked + .zadark-switch__slider{background-color:#30a46c}',
     '#zcall-switch-panel .zcall-switch__note{display:block;margin-top:2px;font-size:12px;line-height:1.4;opacity:.7}',
     '#zcall-switch-panel .zcall-switch__settings{display:inline-block;margin-top:2px;font-size:12px;color:var(--zadark-primary-base);cursor:pointer}',
     '#zcall-switch-panel .zcall-switch__settings:hover{text-decoration:underline}'
