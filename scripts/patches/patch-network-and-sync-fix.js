@@ -20,6 +20,10 @@ const APP_DIR = path.join(__dirname, '..', '..', 'app');
  * Patch Zalo network state detection (gwig) and sync controller routing:
  * 1. Bypass CORS XMLHttpRequest failure to google.com in gwig network check,
  *    forcing getStateNetwork() to return CONNECTED so sync and calls proceed.
+ *    The manager's own state machine keeps reading stateCur, and its ping
+ *    follows navigator.onLine, so after a network drop (or suspend) it can go
+ *    DISCONNECT -> CHECKING -> CONNECTED again and signal the socket and UI to
+ *    reconnect instead of staying stuck in CHECKING.
  * 2. Remove premature NO_NETWORK (1106) throw in main-startup.
  * 3. Route Sync Messages to SyncMessageController (V1) which sends push confirmation
  *    to mobile devices and saves message data via db-cross-v4 / sqlite3.
@@ -72,6 +76,15 @@ async function main() {
       .map(f => path.join(dir, f));
   }
 
+  // gwig network manager, shared by the renderer and worker bundles.
+  const NETWORK_STATE_FIX = [
+    ['networkConnected(){this.getStateNetwork()!==u.CONNECTED&&', 'networkConnected(){this.stateCur!==u.CONNECTED&&'],
+    ['const n=()=>{this.getStateNetwork()===u.CHECKING?', 'const n=()=>{this.stateCur===u.CHECKING?'],
+    ['t<=0?(this.getStateNetwork()===u.CONNECTED?', 't<=0?(this.stateCur===u.CONNECTED?'],
+    ['getStateNetwork(){return this.stateCur}', 'getStateNetwork(){return u.CONNECTED}'],
+    ['_pingToDomain(e){return this._pingToDomainPC(e)}', '_pingToDomain(e){return navigator.onLine?Promise.resolve():Promise.reject()}']
+  ];
+
   // 1. main-startup bundle in lazy/
   const startupFiles = findFiles(lazyDir, /^main-startup\..*\.js$/);
   for (const f of startupFiles) {
@@ -101,8 +114,7 @@ async function main() {
   for (const f of defaultLoginFiles) {
     patchFile(f, [
       ['const a=!0,s=!0,r=!0', 'const a=!0,s=!1,r=!0'],
-      ['getStateNetwork(){return this.stateCur}', 'getStateNetwork(){return u.CONNECTED}'],
-      ['_pingToDomain(e){return this._pingToDomainPC(e)}', '_pingToDomain(e){return Promise.resolve()}'],
+      ...NETWORK_STATE_FIX,
       ['this.stateCur=u.NOT_SET', 'this.stateCur=u.CONNECTED'],
       ['canUseIpcCall(){return A.default.enable_ipc_call&&ne}', 'canUseIpcCall(){return !0}'],
       ['isSupport(){return!!A.default.enable_mac_call&&(A.default.enableCall&&se)}', 'isSupport(){return !0}'],
@@ -119,8 +131,7 @@ async function main() {
   for (const f of otherBundles) {
     patchFile(f, [
       ['const a=!0,i=!0,o=!0', 'const a=!0,i=!1,o=!0'],
-      ['getStateNetwork(){return this.stateCur}', 'getStateNetwork(){return u.CONNECTED}'],
-      ['_pingToDomain(e){return this._pingToDomainPC(e)}', '_pingToDomain(e){return Promise.resolve()}'],
+      ...NETWORK_STATE_FIX,
       ['this.stateCur=u.NOT_SET', 'this.stateCur=u.CONNECTED'],
       ['canUseIpcCall(){return A.default.enable_ipc_call&&ne}', 'canUseIpcCall(){return !0}'],
       ['isSupport(){return!!A.default.enable_mac_call&&(A.default.enableCall&&ie)}', 'isSupport(){return !0}'],
