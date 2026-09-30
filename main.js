@@ -250,6 +250,7 @@ app.once('ready', () => {
   screenshotPlugin.register({ ipcMain });
   userscriptsPlugin.register({ app, ipcMain, BrowserWindow });
   zcallBridgePlugin.launch({ userDataDir: app.getPath('userData') });
+  zcallBridgePlugin.injectSwitch({ app, userDataDir: app.getPath('userData') });
 });
 
 // ---------------------------------------------------------------------------

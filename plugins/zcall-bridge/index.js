@@ -15,19 +15,25 @@
  *      actually running a 32-bit exe (pipebridge --version).
  *   2. If no usable wine exists on first run, ASKS the user (always-on-top
  *      window with browse/download options) and downloads a portable wine
- *      (~54MB) into <userData>/zcall-wine-runtime/ with a progress window —
+ *      (~96MB) into <userData>/zcall-wine-runtime/ with a progress window —
  *      no root needed, works on any distro.
  *   3. Ensures the wine prefix exists (wineboot), exports
  *      ZCALL_WINE / ZCALL_WINEPREFIX / WINEDEBUG into process.env.
  *   4. On quit, kills the whole wine session of our prefix; on launch,
  *      sweeps stale wine processes of unclean previous exits.
  *   5. Tray menu "Cài đặt gọi điện…" opens a settings window: browse/clear/
- *      remove wine.
+ *      remove wine, and pick the call mode.
+ *
+ * Call mode (zcall-config.json "callMode", chosen in the settings window):
+ *   auto   (default) steps 1-3 run at launch: the first call starts at once
+ *   lazy   nothing runs at launch; steps 1-3 run in the background when the
+ *          call engine is first needed, so that first call takes longer
+ *   off    wine is never started; a call attempt shows a notification
  *
  * Configuration (env vars):
  *   ZCALL_WINE                 wine binary (highest priority)
  *   ZCALL_WINEPREFIX           wine prefix (default: <userData>/zcall-wine)
- *   ZCALL_DISABLE              set to anything to skip entirely
+ *   ZCALL_DISABLE              set to anything to force call mode "off"
  *   ZCALL_AUTO_SETUP           '1' to download wine silently (no dialog)
  *   ZCALL_WINE_DOWNLOAD_URL    override the portable wine download URL
  */
@@ -53,6 +59,7 @@ const CONFIG_FILENAME = 'zcall-config.json';
 const CHECK_FILENAME = 'zcall-wine-check.json';
 // Re-check a cached wine in the background this long after launch.
 const RECHECK_DELAY_MS = 20000;
+const CALL_MODES = ['auto', 'lazy', 'off'];
 
 let dialogModule = null;
 let BrowserWindowModule = null;
@@ -80,12 +87,24 @@ function readConfig(userDataDir) {
 }
 
 function writeConfig(userDataDir, cfg) {
+  // Callers pass the whole wine state and drop the other keys; the call
+  // mode is a separate choice and must survive those writes.
+  const saved = readConfig(userDataDir);
+  for (const key of ['callMode', 'callModeOn']) {
+    if (!(key in cfg) && saved[key]) cfg = Object.assign({}, cfg, { [key]: saved[key] });
+  }
   try {
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(path.join(userDataDir, CONFIG_FILENAME), JSON.stringify(cfg, null, 2));
   } catch (e) {
     console.error('[zcall-bridge] could not write config:', e.message);
   }
+}
+
+function getCallMode(userDataDir) {
+  if (process.env.ZCALL_DISABLE) return 'off';
+  const mode = readConfig(userDataDir).callMode;
+  return CALL_MODES.includes(mode) ? mode : 'auto';
 }
 
 // ---------------------------------------------------------------------------
@@ -259,31 +278,50 @@ function writeWineCheck(userDataDir, winePath, prefix) {
   } catch (_) { /* cache only */ }
 }
 
-// Same check as validateWine(), without blocking the main process.
-function recheckWineLater(userDataDir, winePath, prefix) {
-  const timer = setTimeout(() => {
-    const pipebridgePath = findPipebridgePath();
-    if (!pipebridgePath) return;
+// Runs wine without blocking the main process. Resolves { code, out }.
+function runWineAsync(winePath, args, prefix, timeoutMs) {
+  return new Promise((resolve) => {
     let out = '';
+    let done = false;
+    const finish = (code) => {
+      if (done) return;
+      done = true;
+      clearTimeout(kill);
+      resolve({ code, out });
+    };
     let child;
     try {
-      child = spawn(winePath, [pipebridgePath, '--version'], {
+      child = spawn(winePath, args, {
         env: Object.assign({}, process.env, { WINEPREFIX: prefix, WINEDEBUG: '-all' }),
         stdio: ['ignore', 'pipe', 'ignore']
       });
     } catch (e) {
-      writeWineCheck(userDataDir, null, prefix);
+      resolve({ code: -1, out: '' });
       return;
     }
-    const kill = setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 120000);
+    const kill = setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, timeoutMs);
     child.stdout.on('data', (d) => { out += d; });
-    child.on('error', () => {});
-    child.on('close', (code) => {
-      clearTimeout(kill);
-      if (code === 0 && /pipebridge/.test(out)) return;
-      debugLog('background re-check FAILED wine=' + winePath + ' status=' + code + ' — cache cleared');
-      writeWineCheck(userDataDir, null, prefix);
-    });
+    child.on('error', () => finish(-1));
+    child.on('close', (code) => finish(code));
+  });
+}
+
+// Same check as validateWine(), without blocking the main process.
+async function validateWineAsync(winePath, prefix) {
+  const pipebridgePath = findPipebridgePath();
+  if (!pipebridgePath) return false;
+  const { code, out } = await runWineAsync(winePath, [pipebridgePath, '--version'], prefix, 120000);
+  if (code === 0 && /pipebridge/.test(out)) return true;
+  debugLog('async validate FAILED wine=' + winePath + ' status=' + code);
+  return false;
+}
+
+function recheckWineLater(userDataDir, winePath, prefix) {
+  const timer = setTimeout(async () => {
+    if (!findPipebridgePath()) return;
+    if (await validateWineAsync(winePath, prefix)) return;
+    debugLog('background re-check FAILED wine=' + winePath + ' — cache cleared');
+    writeWineCheck(userDataDir, null, prefix);
   }, RECHECK_DELAY_MS);
   if (timer.unref) timer.unref();
 }
@@ -393,13 +431,15 @@ function showAskWindow(failedWine) {
   const { ipcMain } = require('electron');
   const win = new BrowserWindowModule({
     width: 540,
-    height: 280,
+    height: 260,
+    useContentSize: true,
     frame: false,
     resizable: false,
     movable: true,
     center: true,
     alwaysOnTop: true,
     skipTaskbar: false,
+    backgroundColor: '#232526',
     // Tiny internal window with static HTML — node integration is safe here.
     webPreferences: { contextIsolation: false, nodeIntegration: true }
   });
@@ -408,29 +448,27 @@ function showAskWindow(failedWine) {
     ? 'Wine trên máy bạn không tương thích với tính năng gọi (không chạy được ứng dụng 32-bit). Tải bản Wine tương thích?'
     : 'Tính năng gọi điện cần Wine. Tải và bật ngay bây giờ?';
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:sans-serif;background:#1f1f1f;color:#eee;margin:0;padding:20px 24px;-webkit-app-region:drag}
-    h3{margin:0 0 8px;font-size:16px}
-    p{font-size:13px;color:#ccc;margin:0 0 10px;line-height:1.45}
-    #url{font-size:11px;color:#6ab;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;cursor:pointer;margin-bottom:14px;-webkit-app-region:no-drag}
-    label{font-size:13px;color:#ccc;display:block;margin-bottom:16px;-webkit-app-region:no-drag}
-    .row{display:flex;justify-content:flex-end;gap:10px;-webkit-app-region:no-drag}
-    button{font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer}
-    #yes{background:#0a6e3c;color:#fff}
-    #no{background:#3a3a3a;color:#eee}
+    ${DIALOG_CSS}
+    ${DOWNLOAD_CSS}
+    .check{display:flex;align-items:center;gap:8px;margin:0 0 4px;color:var(--muted);cursor:pointer}
+    .check input{margin:0;accent-color:var(--accent)}
+    footer{justify-content:space-between}
   </style></head><body>
-    <h3>Zalo — Tính năng gọi điện</h3>
-    <p>${headLine}<br>
-       Sẽ tải ~54MB về lưu trong dữ liệu của Zalo — không cần quyền quản trị,
-       không ảnh hưởng hệ thống.</p>
-    <div id="url" title="Mở nguồn tải trong trình duyệt">Nguồn tải: ${downloadUrl}</div>
-    <label><input type="checkbox" id="never"> Không hỏi lại lần sau nếu không tải</label>
-    <div class="row" style="justify-content:space-between">
-      <button id="browse">Chọn file wine có sẵn…</button>
-      <span>
-        <button id="no">Để sau</button>
-        <button id="yes">Tải và bật ngay</button>
+    <header><h1>Tính năng gọi điện</h1></header>
+    <main>
+      <p class="lead">${headLine}<br>
+        Sẽ tải ~96MB về lưu trong dữ liệu của Zalo — không cần quyền quản trị,
+        không ảnh hưởng hệ thống.</p>
+      <div id="url" title="Mở nguồn tải trong trình duyệt">Nguồn tải: ${downloadUrl}</div>
+      <label class="check"><input type="checkbox" id="never"> Không hỏi lại lần sau nếu không tải</label>
+    </main>
+    <footer>
+      <button class="btn" id="browse">Chọn file wine có sẵn…</button>
+      <span class="actions">
+        <button class="btn" id="no">Để sau</button>
+        <button class="btn primary" id="yes">Tải và bật ngay</button>
       </span>
-    </div>
+    </footer>
     <script>
       const {ipcRenderer, shell} = require('electron');
       function answer(download) {
@@ -488,31 +526,37 @@ function showAskWindow(failedWine) {
 function showProgressWindow() {
   const win = new BrowserWindowModule({
     width: 520,
-    height: 165,
+    height: 170,
+    useContentSize: true,
     frame: false,
     resizable: false,
     movable: true,
     alwaysOnTop: true,
+    backgroundColor: '#232526',
     // Tiny internal window with static HTML — node integration is safe here.
     webPreferences: { contextIsolation: false, nodeIntegration: true }
   });
   const downloadUrl = process.env.ZCALL_WINE_DOWNLOAD_URL || WINE_DOWNLOAD_URL;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:sans-serif;background:#1f1f1f;color:#eee;margin:0;padding:18px 22px;-webkit-app-region:drag}
-    h3{margin:0 0 6px;font-size:15px} p{margin:0 0 12px;font-size:12px;color:#aaa}
-    progress{width:100%;height:14px}
-    #label{font-size:12px;color:#aaa;margin-top:8px}
-    #url{font-size:11px;color:#6ab;margin-top:8px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;cursor:pointer}
+    ${DIALOG_CSS}
+    ${DOWNLOAD_CSS}
+    body{-webkit-app-region:drag}
+    .track{height:6px;border-radius:99px;background:var(--hover);overflow:hidden}
+    #bar{width:0;height:100%;border-radius:99px;background:var(--accent);transition:width .3s}
+    #label{margin-top:8px;font-size:12.5px;color:var(--muted)}
+    #url{margin:6px 0 0}
   </style></head><body>
-    <h3>Zalo — Tính năng gọi điện</h3>
-    <p>Đang tải Wine (~54MB), vui lòng chờ…</p>
-    <progress id="bar" max="100" value="0"></progress>
-    <div id="label">0%</div>
-    <div id="url" title="Mở nguồn tải trong trình duyệt">${downloadUrl}</div>
+    <header><h1>Tính năng gọi điện</h1></header>
+    <main>
+      <p class="lead">Đang tải Wine (~96MB), vui lòng chờ…</p>
+      <div class="track"><div id="bar"></div></div>
+      <div id="label">0%</div>
+      <div id="url" title="Mở nguồn tải trong trình duyệt">${downloadUrl}</div>
+    </main>
     <script>
       const {ipcRenderer, shell} = require('electron');
       ipcRenderer.on('progress', (e, pct, text) => {
-        document.getElementById('bar').value = pct;
+        document.getElementById('bar').style.width = pct + '%';
         document.getElementById('label').textContent = text;
       });
       document.getElementById('url').onclick = () => {
@@ -628,15 +672,7 @@ async function promptAndInstall(userDataDir, failedWine) {
 // Public API
 // ---------------------------------------------------------------------------
 
-function launch({ userDataDir }) {
-  if (process.env.ZCALL_DISABLE) return false;
-
-  const prefix = process.env.ZCALL_WINEPREFIX || path.join(userDataDir, 'zcall-wine');
-  process.env.WINEPREFIX = prefix;
-
-  // Clean stale wine processes from unclean previous exits
-  sweepStaleProcesses(prefix);
-
+function wineCandidates(userDataDir) {
   // Candidate wines, best first: explicit env -> user-picked custom wine ->
   // our portable runtime (version we control and test) -> system wine ->
   // Bottles runners.
@@ -657,8 +693,12 @@ function launch({ userDataDir }) {
   if (bundledWine) candidates.push(bundledWine);
   if (downloadedWine && candidates.indexOf(downloadedWine) === -1) candidates.push(downloadedWine);
   if (systemWine && candidates.indexOf(systemWine) === -1) candidates.push(systemWine);
+  return { candidates, downloadedWine };
+}
 
-  let wine = null;
+// Blocking discovery, used at launch in "auto" mode.
+function findUsableWineSync(userDataDir, prefix) {
+  const { candidates, downloadedWine } = wineCandidates(userDataDir);
   let failedWine = null;
   for (const candidate of candidates) {
     // Ensure the prefix exists before validating (validation needs a booted prefix)
@@ -677,52 +717,91 @@ function launch({ userDataDir }) {
 
     // A wine is only usable if it can run 32-bit executables.
     if (isWineCheckCached(userDataDir, candidate, prefix)) {
-      wine = candidate;
       recheckWineLater(userDataDir, candidate, prefix);
-      break;
+      return { wine: candidate, downloadedWine, failedWine };
     }
     if (validateWine(candidate, prefix)) {
-      wine = candidate;
       writeWineCheck(userDataDir, candidate, prefix);
-      break;
+      return { wine: candidate, downloadedWine, failedWine };
     }
     console.error('[zcall-bridge] wine cannot run 32-bit apps, skipping:', candidate);
     failedWine = candidate;
   }
+  return { wine: null, downloadedWine, failedWine };
+}
 
-  if (!wine) {
-    const cfg = readConfig(userDataDir);
-
-    // Downloaded runtime exists but cannot run (machine lacks 32-bit
-    // libraries): re-downloading would loop forever — guide the user
-    // instead, once, without nagging every launch.
-    if (downloadedWine && failedWine === downloadedWine) {
-      console.error('[zcall-bridge] downloaded wine broken (missing 32-bit libs?)');
-      if (cfg.wineSetup !== 'broken' && process.env.ZCALL_AUTO_SETUP !== '1') {
-        writeConfig(userDataDir, { wineSetup: 'broken' });
-        showBrokenWineDialog(downloadedWine);
-      }
-      return false;
+// Same discovery without blocking the main process, used in "lazy" mode.
+// onSlow fires once before the first wineboot or uncached validation.
+async function findUsableWineAsync(userDataDir, prefix, onSlow) {
+  const { candidates, downloadedWine } = wineCandidates(userDataDir);
+  let failedWine = null;
+  let slowNotified = false;
+  const slow = () => {
+    if (slowNotified) return;
+    slowNotified = true;
+    if (onSlow) onSlow();
+  };
+  for (const candidate of candidates) {
+    if (!fs.existsSync(path.join(prefix, 'drive_c'))) {
+      slow();
+      console.log('[zcall-bridge] initializing wine prefix:', prefix);
+      await runWineAsync(candidate, ['wineboot', '-u'], prefix, 180000);
     }
-
-    // No usable wine: ask the user (async — never block the ready handler).
-    // Silent only when the user ticked "không hỏi lại" on a previous
-    // decline, unless ZCALL_AUTO_SETUP=1 forces a silent download.
-    if (cfg.wineSetup === 'declined-permanent' && process.env.ZCALL_AUTO_SETUP !== '1') {
-      console.error('[zcall-bridge] wine setup declined permanently — calls unavailable');
-      return false;
+    if (isWineCheckCached(userDataDir, candidate, prefix)) {
+      recheckWineLater(userDataDir, candidate, prefix);
+      return { wine: candidate, downloadedWine, failedWine };
     }
-    console.log('[zcall-bridge] no usable wine, prompting user to set up...');
-    promptAndInstall(userDataDir, failedWine).then((w) => {
-      if (w) console.log('[zcall-bridge] portable wine ready:', w);
-    }).catch((e) => console.error('[zcall-bridge] setup failed:', e.message));
-    return false;
+    slow();
+    if (await validateWineAsync(candidate, prefix)) {
+      writeWineCheck(userDataDir, candidate, prefix);
+      return { wine: candidate, downloadedWine, failedWine };
+    }
+    console.error('[zcall-bridge] wine cannot run 32-bit apps, skipping:', candidate);
+    failedWine = candidate;
+  }
+  return { wine: null, downloadedWine, failedWine };
+}
+
+// No usable wine. At launch the user is only asked when they have not
+// declined for good; on a call attempt they asked for it, so always ask.
+function handleNoWine(userDataDir, { downloadedWine, failedWine }, onCall) {
+  const cfg = readConfig(userDataDir);
+
+  // Downloaded runtime exists but cannot run (machine lacks 32-bit
+  // libraries): re-downloading would loop forever — guide the user
+  // instead, once, without nagging every launch.
+  if (downloadedWine && failedWine === downloadedWine) {
+    console.error('[zcall-bridge] downloaded wine broken (missing 32-bit libs?)');
+    if (onCall || (cfg.wineSetup !== 'broken' && process.env.ZCALL_AUTO_SETUP !== '1')) {
+      writeConfig(userDataDir, { wineSetup: 'broken' });
+      showBrokenWineDialog(downloadedWine);
+    }
+    return;
   }
 
-  // Export for the patched main-dist spawn code
+  // No usable wine: ask the user (async — never block the ready handler).
+  // Silent only when the user ticked "không hỏi lại" on a previous
+  // decline, unless ZCALL_AUTO_SETUP=1 forces a silent download.
+  if (!onCall && cfg.wineSetup === 'declined-permanent' && process.env.ZCALL_AUTO_SETUP !== '1') {
+    console.error('[zcall-bridge] wine setup declined permanently — calls unavailable');
+    return;
+  }
+  console.log('[zcall-bridge] no usable wine, prompting user to set up...');
+  promptAndInstall(userDataDir, failedWine).then((w) => {
+    if (w) console.log('[zcall-bridge] portable wine ready:', w);
+  }).catch((e) => console.error('[zcall-bridge] setup failed:', e.message));
+}
+
+let wineActivated = false;
+
+// Exports the environment the patched main-dist spawn code reads and starts
+// the screen-share watchers. Runs once per session.
+function activateWine(wine, prefix) {
   process.env.ZCALL_WINE = wine;
   process.env.ZCALL_WINEPREFIX = prefix;
   if (!process.env.WINEDEBUG) process.env.WINEDEBUG = '-all';
+  if (wineActivated) return;
+  wineActivated = true;
 
   const runtimeDir = process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid ? process.getuid() : 1000}`;
   if (!process.env.PULSE_SERVER) {
@@ -750,7 +829,184 @@ function launch({ userDataDir }) {
   }
 
   console.log('[zcall-bridge] wine ready:', wine, '(prefix:', prefix + ')');
+}
+
+// Held until clicked or closed: a garbage-collected Notification never
+// emits 'click'.
+const liveNotifications = new Set();
+
+function notify(body, onClick) {
+  getElectronModules();
+  if (NotificationModule && NotificationModule.isSupported()) {
+    const n = new NotificationModule({ title: 'Zalo', body });
+    if (onClick) {
+      liveNotifications.add(n);
+      n.on('click', () => { liveNotifications.delete(n); onClick(); });
+      n.on('close', () => liveNotifications.delete(n));
+    }
+    n.show();
+  }
+}
+
+// The patched main-dist (patch-zcall-callv2.js) awaits global.__zcallPrepare()
+// right before it spawns the call engine; a rejection aborts that start and
+// Zalo retries on the next call.
+let preparing = null;
+
+function prepareOnCall(userDataDir, prefix) {
+  if (wineActivated) return Promise.resolve(process.env.ZCALL_WINE);
+  if (!preparing) {
+    preparing = findUsableWineAsync(userDataDir, prefix, () => {
+      notify('Đang chuẩn bị tính năng gọi điện lần đầu, vui lòng chờ trong giây lát…');
+    }).then((found) => {
+      preparing = null;
+      if (found.wine) {
+        activateWine(found.wine, prefix);
+        return found.wine;
+      }
+      handleNoWine(userDataDir, found, true);
+      throw new Error('no usable wine');
+    }, (e) => {
+      preparing = null;
+      throw e;
+    });
+  }
+  return preparing;
+}
+
+function winePrefix(userDataDir) {
+  return process.env.ZCALL_WINEPREFIX || path.join(userDataDir, 'zcall-wine');
+}
+
+// Sets the hooks the patched main-dist reads for this mode. `live` is a
+// change while the app runs: a wine that was never prepared (the app was
+// started with calls off) is then prepared on the next call.
+function installGate(mode, userDataDir, live) {
+  // Zalo starts the call engine at launch when the server asks for it
+  // (call.launch_native_in_startup); the patched main-dist skips that start
+  // while this is set, so only a real call reaches __zcallPrepare.
+  global.__zcallDeferStartup = mode !== 'auto';
+
+  if (mode === 'off') {
+    global.__zcallPrepare = () => {
+      // Clickable: without a tray host (stock GNOME) the tray menu entry
+      // is unreachable, so this is a way back to the settings.
+      notify('Tính năng gọi điện đang tắt. Bấm vào đây để mở Cài đặt gọi điện.',
+        () => openSetupDialog({ userDataDir }));
+      return Promise.reject(new Error('calls disabled'));
+    };
+  } else if (mode === 'lazy' || (live && !wineActivated)) {
+    const prefix = winePrefix(userDataDir);
+    global.__zcallPrepare = () => prepareOnCall(userDataDir, prefix);
+  } else {
+    delete global.__zcallPrepare;
+  }
+}
+
+/**
+ * Saves and applies a call mode while the app runs (ZaDark switch, settings
+ * window). Turning calls off also stops a running call engine, which ends a
+ * call in progress. Preparing wine at launch ("auto") starts with the next
+ * launch.
+ */
+function setCallMode(userDataDir, mode) {
+  if (!CALL_MODES.includes(mode)) return;
+  const cfg = readConfig(userDataDir);
+  cfg.callMode = mode;
+  if (mode !== 'off') cfg.callModeOn = mode;
+  writeConfig(userDataDir, cfg);
+
+  const effective = getCallMode(userDataDir);
+  installGate(effective, userDataDir, true);
+  console.log('[zcall-bridge] call mode set to', effective);
+  // Let the switch animation finish: killWineSession blocks for ~2 s.
+  if (effective === 'off' && process.env.ZCALL_WINEPREFIX) setTimeout(shutdown, 300);
+  pushSwitchState(userDataDir);
+}
+
+function launch({ userDataDir }) {
+  const firstRun = needsFirstRunChoice(userDataDir);
+  const mode = firstRun ? 'lazy' : getCallMode(userDataDir);
+  installGate(mode, userDataDir, false);
+  if (firstRun) setTimeout(() => showFirstRunWindow(userDataDir), FIRST_RUN_DELAY_MS);
+
+  if (mode === 'off') {
+    console.log('[zcall-bridge] call mode off — wine not started');
+    return false;
+  }
+
+  const prefix = winePrefix(userDataDir);
+  process.env.WINEPREFIX = prefix;
+
+  // Clean stale wine processes from unclean previous exits
+  sweepStaleProcesses(prefix);
+
+  if (mode === 'lazy') {
+    console.log('[zcall-bridge] call mode lazy — wine is prepared on the first call');
+    return false;
+  }
+
+  const found = findUsableWineSync(userDataDir, prefix);
+  if (!found.wine) {
+    handleNoWine(userDataDir, found, false);
+    return false;
+  }
+  activateWine(found.wine, prefix);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// ZaDark popup switch (inject-switch.js)
+// ---------------------------------------------------------------------------
+
+const SWITCH_TRIGGER = 'ZCALL_SWITCH_TRIGGER:';
+const switchContents = new Set();
+
+function switchState(userDataDir) {
+  const mode = getCallMode(userDataDir);
+  let note;
+  if (process.env.ZCALL_DISABLE) note = 'Đang bị tắt bởi biến môi trường ZCALL_DISABLE.';
+  else if (mode === 'off') note = 'Đã tắt: Zalo không chạy Wine, không gọi và nhận cuộc gọi được.';
+  else if (mode === 'lazy') note = 'Wine chỉ chạy khi có cuộc gọi.';
+  else note = 'Wine được chuẩn bị sẵn khi mở Zalo.';
+  return { enabled: mode !== 'off', note };
+}
+
+function pushSwitchState(userDataDir) {
+  const js = 'window.__zcallSwitchUpdate&&window.__zcallSwitchUpdate(' +
+    JSON.stringify(switchState(userDataDir)) + ')';
+  for (const contents of switchContents) {
+    if (contents.isDestroyed()) {
+      switchContents.delete(contents);
+      continue;
+    }
+    contents.executeJavaScript(js, true).catch(() => {});
+  }
+}
+
+/**
+ * Adds the call switch to the ZaDark popup of every Zalo window. Only the
+ * ZaDark variants have that popup; elsewhere the script finds nothing and
+ * stays idle.
+ */
+function injectSwitch({ app, userDataDir }) {
+  const script = fs.readFileSync(path.join(__dirname, 'inject-switch.js'), 'utf8');
+  app.on('browser-window-created', (_e, win) => {
+    win.on('page-title-updated', (event, title) => {
+      if (!title.startsWith(SWITCH_TRIGGER)) return;
+      event.preventDefault();
+      const command = title.slice(SWITCH_TRIGGER.length);
+      if (command === 'settings') openSetupDialog({ userDataDir });
+      else if (command === 'on') setCallMode(userDataDir, readConfig(userDataDir).callModeOn || 'auto');
+      else if (command === 'off') setCallMode(userDataDir, 'off');
+    });
+    win.webContents.on('dom-ready', () => {
+      if (!win.webContents.getURL().includes('/pc-dist/index.html')) return;
+      switchContents.add(win.webContents);
+      const state = 'window.__zcallSwitchState=' + JSON.stringify(switchState(userDataDir)) + ';';
+      win.webContents.executeJavaScript(state + script, true).catch(() => {});
+    });
+  });
 }
 
 /**
@@ -861,57 +1117,243 @@ function showBrokenWineDialog(winePath) {
   });
 }
 
-function openSetupDialog({ userDataDir }) {
+// Shared look of the call windows (settings, first run, download ask and
+// progress): ZaDark's palette, font and blue accent, light and dark themes.
+const DIALOG_CSS = `
+    :root{color-scheme:dark;--bg:#232526;--card:#2d3031;--hover:#343637;--border:#464849;--text:#e5e5e5;--muted:#9e9f9f;
+      --accent:#0e70ff;--accent-hover:#035bdc;--accent-text:#3989ff;--accent-bg:#0f2345;--input:#2d3031;--danger:#ff6b6b}
+    @media (prefers-color-scheme: light){:root{color-scheme:light;--bg:#fff;--card:#fbfbfd;--hover:#eeeff2;--border:#e1e4ea;--text:#001a33;
+      --muted:#72808e;--accent-text:#0068ff;--accent-bg:#e5efff;--input:#f4f5f7;--danger:#d93025}}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "Open Sans",system-ui,Cantarell,"Noto Sans",Ubuntu,sans-serif;user-select:none}
+    header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px 20px;-webkit-app-region:drag}
+    h1{margin:0;font-size:16px;font-weight:600}
+    h2{margin:0 0 8px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+    main{padding:0 20px}
+    section{margin-bottom:16px}
+    button,input,label{-webkit-app-region:no-drag;font:inherit}
+    .icon{width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:16px;cursor:pointer}
+    .icon:hover{background:var(--hover);color:var(--text)}
+    .modes{display:flex;flex-direction:column;gap:6px}
+    .mode{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);cursor:pointer}
+    .mode:hover{background:var(--hover)}
+    .mode input{margin:3px 0 0;accent-color:var(--accent);width:16px;height:16px;flex:none}
+    .mode b{display:block;font-weight:600}
+    .mode small{display:block;color:var(--muted);font-size:12.5px;margin-top:1px}
+    .mode:has(input:checked){border-color:var(--accent);background:var(--accent-bg)}
+    .note{min-height:18px;margin:6px 2px 0;font-size:12.5px;color:var(--accent-text)}
+    .status{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);margin-bottom:8px}
+    .badge{flex:none;font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;color:var(--accent-text);border:1px solid var(--accent-text)}
+    .badge.missing{color:var(--muted);border-color:var(--border)}
+    .status .info{flex:1;min-width:0}
+    .btn.small{flex:none;padding:5px 10px;font-size:13px}
+    .result{margin:-2px 2px 8px;font-size:12.5px;white-space:pre-wrap;user-select:text}
+    .result:empty{display:none}
+    .result.ok{color:var(--accent-text)}
+    .result.fail{color:var(--danger)}
+    code{display:block;font:13px/1.4 ui-monospace,"DejaVu Sans Mono",monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text}
+    .status small{display:block;color:var(--muted);font-size:12px}
+    .pathrow{display:flex;gap:8px;margin-bottom:8px}
+    .pathrow input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input);color:var(--text);user-select:text}
+    .pathrow input:focus{outline:none;border-color:var(--accent)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .btn{padding:8px 12px;border:0;border-radius:8px;background:var(--hover);color:var(--text);cursor:pointer;white-space:nowrap;transition:background .25s}
+    .btn:hover{background:var(--border)}
+    .btn.primary{background:var(--accent);color:#fff}
+    .btn.primary:hover{background:var(--accent-hover)}
+    .btn.danger:hover{color:var(--danger)}
+    #wineSec.dim{opacity:.55}
+    footer{display:flex;justify-content:flex-end;padding:4px 20px 18px}
+`;
+
+// Extra rules shared by the download ask and progress windows.
+const DOWNLOAD_CSS = `
+    .lead{margin:0 0 10px;color:var(--muted)}
+    #url{font-size:12px;color:var(--accent-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;margin-bottom:12px;-webkit-app-region:no-drag}
+    #url:hover{text-decoration:underline}
+    .actions{display:flex;gap:8px}
+`;
+
+let setupWin = null;
+
+// Delay so the question comes up over Zalo's window, not before it.
+const FIRST_RUN_DELAY_MS = 3000;
+
+// Asked once, when no call mode was ever chosen. Scripted installs
+// (ZCALL_AUTO_SETUP=1) and ZCALL_DISABLE skip it.
+function needsFirstRunChoice(userDataDir) {
+  if (process.env.ZCALL_DISABLE || process.env.ZCALL_AUTO_SETUP === '1') return false;
+  return !CALL_MODES.includes(readConfig(userDataDir).callMode);
+}
+
+/**
+ * First-run question (#80): calls or messages only. Until it is answered
+ * the session runs as "lazy", so no wine starts behind the user's back.
+ * Closing the window keeps the default ("auto").
+ */
+function showFirstRunWindow(userDataDir) {
   getElectronModules();
   if (!BrowserWindowModule) return;
   const { ipcMain } = require('electron');
-  const prefix = process.env.ZCALL_WINEPREFIX || path.join(userDataDir, 'zcall-wine');
-
   const win = new BrowserWindowModule({
-    width: 600,
-    height: 460,
+    width: 500,
+    height: 470,
+    useContentSize: true,
     frame: false,
     resizable: false,
     center: true,
     alwaysOnTop: true,
+    backgroundColor: '#232526',
     webPreferences: { contextIsolation: false, nodeIntegration: true }
   });
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:sans-serif;background:#1f1f1f;color:#eee;margin:0;padding:20px 24px;-webkit-app-region:drag}
-    h3{margin:0 0 10px;font-size:16px}
-    #status{font-size:13px;color:#ccc;background:#2a2a2a;border-radius:6px;padding:10px 12px;margin-bottom:14px;line-height:1.5;word-break:break-all}
-    button{display:block;width:100%;font-size:13px;padding:10px;margin-bottom:10px;border-radius:6px;border:none;cursor:pointer;background:#3a3a3a;color:#eee;-webkit-app-region:no-drag}
-    button:hover{background:#4a4a4a}
-    .pathrow{display:flex;gap:8px;margin-bottom:10px;-webkit-app-region:no-drag}
-    .pathrow input{flex:1;font-size:13px;padding:9px 10px;border-radius:6px;border:1px solid #4a4a4a;background:#2a2a2a;color:#eee}
-    .pathrow button{width:auto;margin:0;white-space:nowrap}
-    #close{background:#2a2a2a}
+    ${DIALOG_CSS}
+    .lead{margin:0 0 14px;color:var(--muted)}
   </style></head><body>
-    <h3>Zalo — Cài đặt gọi điện</h3>
-    <div id="status">Đang kiểm tra…</div>
-    <div class="pathrow">
-      <input id="pathInput" placeholder="Nhập đường dẫn wine, ví dụ /usr/bin/wine">
-      <button id="setpath">Dùng đường dẫn này</button>
-    </div>
-    <button id="browse">Chọn file wine khác…</button>
-    <button id="download">Tải wine về (~54MB)</button>
-    <button id="clear">Bỏ lựa chọn wine đã lưu</button>
-    <button id="remove">Xóa wine đã tải về khỏi máy</button>
-    <button id="close">Đóng</button>
+    <header><h1>Bạn có dùng Zalo để gọi điện không?</h1></header>
+    <main>
+      <p class="lead">Gọi điện trên Linux cần chạy thêm Wine, tốn thêm bộ nhớ và CPU.
+        Có thể đổi lại bất cứ lúc nào trong Cài đặt → Cài đặt gọi điện.</p>
+      <div class="modes">
+        <label class="mode"><input type="radio" name="mode" value="auto" checked>
+          <span><b>Có, tôi hay gọi điện</b><small>Chuẩn bị Wine sẵn khi mở Zalo, gọi nhanh nhất.</small></span></label>
+        <label class="mode"><input type="radio" name="mode" value="lazy">
+          <span><b>Thỉnh thoảng</b><small>Chỉ chạy Wine khi có cuộc gọi. Cuộc gọi đầu chậm hơn vài giây.</small></span></label>
+        <label class="mode"><input type="radio" name="mode" value="off">
+          <span><b>Không, tôi chỉ nhắn tin</b><small>Không chạy Wine. Không gọi và nhận cuộc gọi được.</small></span></label>
+      </div>
+    </main>
+    <footer><button class="btn primary" id="save">Lưu</button></footer>
     <script>
       const {ipcRenderer} = require('electron');
-      // pass the command as the IPC argument so the main handler can match it
-      const send = (cmd, arg) => ipcRenderer.send(cmd, arg || cmd);
+      document.getElementById('save').onclick = () => {
+        ipcRenderer.send('zcall-firstrun', document.querySelector('input[name=mode]:checked').value);
+      };
+    </script>
+  </body></html>`;
+  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+
+  let answered = false;
+  const onAnswer = (_e, mode) => {
+    answered = true;
+    setCallMode(userDataDir, mode);
+    try { win.destroy(); } catch (e) { /* closed */ }
+  };
+  ipcMain.once('zcall-firstrun', onAnswer);
+  win.on('closed', () => {
+    ipcMain.removeListener('zcall-firstrun', onAnswer);
+    if (!answered) setCallMode(userDataDir, 'auto');
+  });
+}
+
+function openSetupDialog({ userDataDir }) {
+  getElectronModules();
+  if (!BrowserWindowModule) return;
+  // One settings window: the tray, the ZaDark switch and the "calls off"
+  // notification all open it.
+  if (setupWin && !setupWin.isDestroyed()) {
+    setupWin.show();
+    setupWin.focus();
+    return;
+  }
+  const { ipcMain } = require('electron');
+  const prefix = process.env.ZCALL_WINEPREFIX || path.join(userDataDir, 'zcall-wine');
+
+  const win = new BrowserWindowModule({
+    width: 540,
+    height: 640,
+    useContentSize: true,
+    frame: false,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    backgroundColor: '#232526',
+    webPreferences: { contextIsolation: false, nodeIntegration: true }
+  });
+  setupWin = win;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    ${DIALOG_CSS}
+  </style></head><body>
+    <header>
+      <h1>Cài đặt gọi điện</h1>
+      <button class="icon" id="x" title="Đóng (Esc)">✕</button>
+    </header>
+    <main>
+      <section>
+        <h2>Chế độ gọi điện</h2>
+        <div class="modes">
+          <label class="mode"><input type="radio" name="mode" value="auto">
+            <span><b>Chuẩn bị sẵn khi mở Zalo</b><small>Gọi nhanh nhất. Wine chạy mỗi lần mở Zalo.</small></span></label>
+          <label class="mode"><input type="radio" name="mode" value="lazy">
+            <span><b>Chỉ chuẩn bị khi bấm gọi</b><small>Mở Zalo nhẹ hơn. Cuộc gọi đầu tiên chậm hơn vài giây.</small></span></label>
+          <label class="mode"><input type="radio" name="mode" value="off">
+            <span><b>Tắt tính năng gọi điện</b><small>Không chạy Wine. Dành cho người chỉ nhắn tin.</small></span></label>
+        </div>
+        <p class="note" id="modeNote"></p>
+      </section>
+      <section id="wineSec">
+        <h2>Wine</h2>
+        <div class="status">
+          <span class="badge" id="badge">…</span>
+          <div class="info"><code id="winePath">Đang kiểm tra…</code><small id="saved"></small></div>
+          <button class="btn small" id="test">Kiểm tra</button>
+        </div>
+        <p class="result" id="testResult"></p>
+        <div class="pathrow">
+          <input id="pathInput" placeholder="Đường dẫn wine, ví dụ /usr/bin/wine">
+          <button class="btn primary" id="setpath">Dùng</button>
+        </div>
+        <div class="grid">
+          <button class="btn" id="browse">Chọn file wine…</button>
+          <button class="btn" id="download">Tải wine về (~96MB)</button>
+          <button class="btn" id="clear">Bỏ lựa chọn đã lưu</button>
+          <button class="btn danger" id="remove">Xóa wine đã tải</button>
+        </div>
+      </section>
+    </main>
+    <footer><button class="btn primary" id="close">Xong</button></footer>
+    <script>
+      const {ipcRenderer} = require('electron');
+      const $ = (id) => document.getElementById(id);
+      // pass the command as the first IPC argument so the shared main
+      // handler can match it; the value (typed path, mode) comes second
+      const send = (cmd, arg) => ipcRenderer.send(cmd, cmd, arg);
       const closeWin = () => { send('zcall-cfg-close'); setTimeout(() => window.close(), 80); };
-      document.getElementById('browse').onclick = () => send('zcall-cfg-browse');
-      document.getElementById('download').onclick = () => send('zcall-cfg-download');
-      document.getElementById('clear').onclick = () => send('zcall-cfg-clear');
-      document.getElementById('remove').onclick = () => send('zcall-cfg-remove');
-      document.getElementById('setpath').onclick = () => send('zcall-cfg-setpath', document.getElementById('pathInput').value.trim());
-      document.getElementById('close').onclick = closeWin;
+      $('browse').onclick = () => send('zcall-cfg-browse');
+      $('download').onclick = () => send('zcall-cfg-download');
+      $('clear').onclick = () => send('zcall-cfg-clear');
+      $('remove').onclick = () => send('zcall-cfg-remove');
+      $('test').onclick = () => {
+        $('test').disabled = true;
+        $('testResult').className = 'result';
+        $('testResult').textContent = 'Đang chạy thử wine…';
+        send('zcall-cfg-test');
+      };
+      ipcRenderer.on('zcall-cfg-test', (e, ok, text) => {
+        $('test').disabled = false;
+        $('testResult').className = 'result ' + (ok ? 'ok' : 'fail');
+        $('testResult').textContent = text;
+      });
+      $('setpath').onclick = () => send('zcall-cfg-setpath', $('pathInput').value.trim());
+      $('pathInput').onkeydown = (e) => { if (e.key === 'Enter') $('setpath').click(); };
+      $('close').onclick = closeWin;
+      $('x').onclick = closeWin;
+      for (const r of document.querySelectorAll('input[name=mode]')) {
+        r.onchange = () => send('zcall-cfg-mode', r.value);
+      }
+      ipcRenderer.on('zcall-cfg-mode', (e, mode, note) => {
+        const r = document.querySelector('input[name=mode][value="' + mode + '"]');
+        if (r) r.checked = true;
+        $('modeNote').textContent = note || '';
+        $('wineSec').classList.toggle('dim', mode === 'off');
+      });
       document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeWin(); });
-      ipcRenderer.on('zcall-cfg-status', (e, text) => {
-        document.getElementById('status').textContent = text;
+      ipcRenderer.on('zcall-cfg-status', (e, st) => {
+        $('badge').textContent = st.wine ? 'Sẵn sàng' : 'Chưa có';
+        $('badge').classList.toggle('missing', !st.wine);
+        $('winePath').textContent = st.wine || 'Chưa có wine, chưa gọi điện được';
+        $('winePath').title = st.wine || '';
+        $('saved').textContent = st.saved ? 'Đã lưu lựa chọn: ' + st.saved : 'Tự dò wine';
       });
     </script>
   </body></html>`;
@@ -919,17 +1361,52 @@ function openSetupDialog({ userDataDir }) {
 
   const currentWine = () => process.env.ZCALL_WINE || findWine() || findDownloadedWine(userDataDir);
   const pushStatus = () => {
-    const w = currentWine();
-    const cfg = readConfig(userDataDir);
-    let text = w
-      ? 'Wine đang dùng: ' + w + (cfg.winePath ? '\n(Lựa chọn đã lưu: ' + cfg.winePath + ')' : '')
-      : 'Chưa có wine — tính năng gọi chưa hoạt động.';
-    try { win.webContents.send('zcall-cfg-status', text); } catch (e) { /* closed */ }
+    const status = { wine: currentWine() || '', saved: readConfig(userDataDir).winePath || '' };
+    try { win.webContents.send('zcall-cfg-status', status); } catch (e) { /* closed */ }
   };
   pushStatus();
 
+  // A change applies at once; only preparing wine at launch waits for the
+  // next start.
+  const launchMode = getCallMode(userDataDir);
+  const pushMode = () => {
+    const mode = getCallMode(userDataDir);
+    let note = '';
+    if (mode === 'auto' && launchMode !== 'auto') note = 'Đã bật. Wine được chuẩn bị sẵn từ lần mở Zalo sau.';
+    else if (mode !== launchMode) note = 'Đã áp dụng.';
+    if (process.env.ZCALL_DISABLE) note = 'Đang bị tắt bởi biến môi trường ZCALL_DISABLE.';
+    try { win.webContents.send('zcall-cfg-mode', mode, note); } catch (e) { /* closed */ }
+  };
+  win.webContents.on('did-finish-load', () => { pushStatus(); pushMode(); });
+
   const onIpc = (_e, cmd, arg) => {
     if (cmd === 'zcall-cfg-close') { try { win.destroy(); } catch (e) {} return; }
+    if (cmd === 'zcall-cfg-mode') {
+      setCallMode(userDataDir, arg);
+      pushMode();
+      return;
+    }
+    if (cmd === 'zcall-cfg-test') {
+      const reply = (ok, text) => {
+        try { win.webContents.send('zcall-cfg-test', ok, text); } catch (e) { /* closed */ }
+      };
+      const wine = currentWine();
+      if (!wine) {
+        reply(false, 'Chưa có wine. Bấm "Tải wine về" hoặc chọn file wine có sẵn.');
+        return;
+      }
+      validateWineAsync(wine, prefix).then((ok) => {
+        if (ok) {
+          writeWineCheck(userDataDir, wine, prefix);
+          reply(true, '✓ Wine chạy được ứng dụng 32-bit, sẵn sàng gọi điện.');
+        } else {
+          const hint = getI386InstallHint();
+          reply(false, '✗ Wine không chạy được ứng dụng 32-bit.\n' + hint.title + '\n' + hint.command.split('\n')[0] +
+            (hint.command.includes('dpkg') ? '\n' + hint.command.split('\n')[1] : ''));
+        }
+      });
+      return;
+    }
     if (cmd === 'zcall-cfg-browse') {
       dialogModule.showOpenDialog(win, { title: 'Chọn file wine', properties: ['openFile'] }).then((picked) => {
         const chosen = picked.filePaths && picked.filePaths[0];
@@ -1045,7 +1522,7 @@ function openSetupDialog({ userDataDir }) {
     }
   };
   const CFG_CHANNELS = ['zcall-cfg-browse', 'zcall-cfg-download', 'zcall-cfg-clear',
-                        'zcall-cfg-remove', 'zcall-cfg-close', 'zcall-cfg-setpath'];
+                        'zcall-cfg-remove', 'zcall-cfg-close', 'zcall-cfg-setpath', 'zcall-cfg-mode', 'zcall-cfg-test'];
   for (const c of CFG_CHANNELS) ipcMain.on(c, onIpc);
   win.on('closed', () => {
     for (const c of CFG_CHANNELS) {
@@ -1321,6 +1798,7 @@ function stopScreenBridge() {
 
 module.exports = {
   launch,
+  injectSwitch,
   openSetupDialog,
   shutdown,
   // internal (testability)

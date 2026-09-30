@@ -89,6 +89,29 @@ Mở app lần đầu là gọi được ngay — không cần mạng, không c�
 Bản thường (~263MB) vẫn giữ luồng tự tải ở trên; tất cả chạy từ cùng
 một code, chỉ khác phần wine đi kèm.
 
+## Chế độ gọi điện (không muốn chạy Wine?)
+
+Khay hệ thống → **Cài đặt gọi điện…** → **Chế độ gọi điện** (lưu ở
+`<userData>/zcall-config.json`, khóa `callMode`, áp dụng từ lần mở app sau):
+
+| Chế độ | Khi mở app | Khi bấm gọi |
+|---|---|---|
+| **Chuẩn bị sẵn** (`auto`, mặc định) | dò + kiểm tra wine, tạo prefix | gọi ngay |
+| **Chỉ chuẩn bị khi bấm gọi** (`lazy`) | không chạy wine | dò + kiểm tra wine ở nền (không đơ app), cuộc gọi đầu chậm hơn; lần sau trong phiên thì nhanh như `auto` |
+| **Tắt** (`off`) | không chạy wine | không khởi động wine, hiện thông báo hướng dẫn bật lại |
+
+Phù hợp cho ai chỉ dùng Zalo để nhắn tin/xem tin nhắn cũ mà máy đã có wine
+(bản Full hoặc wine hệ thống) (#80). `ZCALL_DISABLE=1` tương đương chế độ `off`.
+
+Cơ chế (`patch-zcall-callv2.js`):
+- Bước 13: main-dist chờ `global.__zcallPrepare()` của plugin ngay trước khi
+  khởi động ZaloCall — `lazy` chuẩn bị wine lúc này, `off` từ chối.
+- Bước 14: server Zalo có cờ `call.launch_native_in_startup` khiến ZaloCall
+  được khởi động ngay lúc mở app (tin nhắn `init` không có `_optional`).
+  Ở `lazy`/`off` plugin đặt `global.__zcallDeferStartup` và main-dist bỏ qua
+  tin nhắn đó; dữ liệu init vẫn được gửi lại trước mỗi `makeCall` (bước 6).
+  Cuộc gọi đi và cuộc gọi đến đều khởi động ZaloCall bình thường.
+
 ## Cấu hình Wine (custom path)
 
 Người dùng nâng cao có thể chỉ định wine riêng. Khi app khởi động, plugin
@@ -120,7 +143,7 @@ gọi** — và hộp thoại hỏi tải wine ở trên sẽ xuất hiện.
 |---|---|---|
 | `ZCALL_WINE` | Đường dẫn tuyệt đối tới binary `wine` | tự dò (xem thứ tự trên) |
 | `ZCALL_WINEPREFIX` | Prefix wine dành riêng cho app | `<userData>/zcall-wine` |
-| `ZCALL_DISABLE` | Set bất kỳ giá trị nào để tắt hẳn tính năng gọi | — |
+| `ZCALL_DISABLE` | Set bất kỳ giá trị nào để tắt hẳn tính năng gọi (như chế độ `off`) | — |
 | `ZCALL_AUTO_SETUP` | `'1'` = tải wine tự động, không hỏi (dùng khi triển khai hàng loạt/script) | — |
 | `ZCALL_WINE_DOWNLOAD_URL` | Ghi đè URL tải wine portable | URL kron4ek 11.14 trên GitHub |
 

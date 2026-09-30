@@ -79,6 +79,8 @@ const REPLACEMENTS = [
   {
     from: '.on("call-send-to-native",((e,t)=>{t._optional?delete t._optional:K(),D(t)}))',
     to: '.on("call-send-to-native",((e,t)=>{t._optional?delete t._optional:K(),t&&"makeCall"===t.command&&O&&D(O),D(t)}))',
+    // step 14 rewrites the start of this handler
+    already: 't&&"makeCall"===t.command&&O&&D(O),D(t)}))',
   },
   // 7. Fix the send queue's F flag. On the non-win32 path the flag is only
   //    cleared when the helper sends data back on the send channel — which
@@ -161,6 +163,25 @@ const REPLACEMENTS = [
   {
     from: /else if\(e\)\{if\(x\.length\)\{const ([$\w]+)=x\.shift\(\);([$\w]+)\(e,\1\)/,
     to: 'else if(e&&!e.destroyed){if(x.length){const $1=x.shift();$2(e,$1)',
+  },
+  // 13. Call mode (#80): before the helper start, await the zcall-bridge
+  //     plugin's global.__zcallPrepare(). In "lazy" mode it finds and
+  //     validates wine only now; in "off" mode it rejects. A rejection lands
+  //     in the chain's own .catch, which resets L so the next call retries.
+  {
+    from: /\}\(\);([$\w]+)\(e,([$\w]+)\)\.then\(\(t=>\{if\(([$\w]+)&&!t\)return L=!1/,
+    to: '}();("linux"===process.platform&&global.__zcallPrepare?global.__zcallPrepare().then((()=>$1(e,$2))):$1(e,$2)).then((t=>{if($3&&!t)return L=!1',
+    already: 'global.__zcallPrepare().then(',
+  },
+  // 14. The server flag call.launch_native_in_startup makes the renderer
+  //     send the "init" message non-optional, which starts the helper at
+  //     launch. In "lazy"/"off" mode the plugin sets
+  //     global.__zcallDeferStartup: drop that message instead. The init
+  //     payload itself (O, from call-init) is re-sent before every makeCall
+  //     (step 6).
+  {
+    from: '.on("call-send-to-native",((e,t)=>{t._optional?delete t._optional:K()',
+    to: '.on("call-send-to-native",((e,t)=>{if(global.__zcallDeferStartup&&t&&!t._optional&&"init"===t.command)return;t._optional?delete t._optional:K()',
   },
 ];
 
