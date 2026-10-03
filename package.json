@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "check-versions": "node scripts/check-versions.js",
-    "download-dmg": "node scripts/download-dmg.js",
+    "download": "node scripts/download.js",
     "prepare-zadark": "node scripts/prepare-zadark.js",
     "prepare-app": "node scripts/prepare-app.js",
     "build": "node scripts/build.js",

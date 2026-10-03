@@ -3,7 +3,7 @@
  *
  * Prepares the call-v2 Wine runtime:
  *
- *   1. Downloads the official Windows Zalo installer and extracts
+ *   1. Copies Windows plugins extracted by prepare-app.js:
  *      plugins/capture/ (ZaloCall.exe + Qt DLLs + plugins) into
  *      app/native/qt-call-and-cap/, then trims unneeded files
  *   2. Compiles pipebridge.c (252KB named-pipe <-> TCP pump, no runtime
@@ -18,59 +18,12 @@
 const { execSync } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
-const https = require('https');
 const os = require('os');
 const logger = require('./utils/logger');
 
 const ROOT = path.join(__dirname, '..');
 const TARGET = path.join(ROOT, 'app', 'native', 'qt-call-and-cap');
 const TEMP_DIR = path.join(ROOT, 'temp');
-
-const ZALO_WIN_PATTERN = 'https://res-download-pc.zadn.vn/win/ZaloSetup-VERSION.exe';
-
-function download(url, dest) {
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
-    https.get(url, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        file.close();
-        return download(res.headers.location, dest).then(resolve, reject);
-      }
-      if (res.statusCode !== 200) {
-        file.close();
-        fs.unlinkSync(dest);
-        reject(new Error('HTTP ' + res.statusCode + ' for ' + url));
-        return;
-      }
-      res.pipe(file);
-      file.on('finish', () => { file.close(); resolve(); });
-    }).on('error', (e) => {
-      file.close();
-      try { fs.unlinkSync(dest); } catch (_) { /* ignore */ }
-      reject(e);
-    });
-  });
-}
-
-async function getWindowsVersion() {
-  return new Promise((resolve, reject) => {
-    https.get('https://zalo.me/download/zalo-pc?utm=90000', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    }, (res) => {
-      if (res.statusCode === 302 && res.headers.location) {
-        const m = res.headers.location.match(/ZaloSetup-([0-9.]+)\.exe/);
-        if (m) return resolve(m[1]);
-      }
-      reject(new Error('Could not resolve Windows Zalo version'));
-    }).on('error', reject);
-  });
-}
-
-function sevenz(args) {
-  execSync(`7z ${args}`, { cwd: TEMP_DIR, stdio: 'pipe' });
-}
 
 async function main() {
 
@@ -80,37 +33,19 @@ async function main() {
     return;
   }
 
-  fs.ensureDirSync(TEMP_DIR);
-
   // -------------------------------------------------------------------------
   // 1. plugins/capture from the Windows installer
-  //    NOTE: the Windows version is resolved independently of ZALO_VERSION
-  //    (which refers to the macOS DMG) — the two version families can diverge.
   // -------------------------------------------------------------------------
-  const version = process.env.ZALO_WIN_VERSION || await getWindowsVersion();
+  const version = process.env.ZALO_WIN_VERSION;
+  if (!version) {
+    throw new Error('ZALO_WIN_VERSION is required; run prepare-app.js before zcall-bridge setup');
+  }
   logger.info(`Setting up call-v2 runtime from Zalo Windows v${version}...`);
 
-  const exeName = `ZaloSetup-${version}.exe`;
-  const exePath = path.join(TEMP_DIR, exeName);
-  if (!fs.existsSync(exePath)) {
-    logger.dim('Downloading Windows installer...');
-    await download(ZALO_WIN_PATTERN.replace('VERSION', version), exePath);
+  const captureSrc = path.join(TEMP_DIR, `Zalo-Win-${version}`, `Zalo-${version}`, 'plugins', 'capture');
+  if (!fs.existsSync(path.join(captureSrc, 'ZaloCall.exe'))) {
+    throw new Error(`Windows capture runtime missing: ${captureSrc}; run prepare-app.js first`);
   }
-
-  const inner7z = path.join(TEMP_DIR, `zcall-bridge-${version}.7z`);
-  if (!fs.existsSync(inner7z)) {
-    logger.dim('Extracting installer payload...');
-    sevenz(`e -y "${exeName}" '$PLUGINSDIR/app-32.7z' -ozcall-bridge-extract`);
-    fs.copyFileSync(path.join(TEMP_DIR, 'zcall-bridge-extract', 'app-32.7z'), inner7z);
-  }
-
-  // version-tagged so CI caching never serves a stale engine for a new version
-  const captureOut = path.join(TEMP_DIR, `capture-extract-${version}`);
-  if (!fs.existsSync(path.join(captureOut, 'ZaloCall.exe'))) {
-    sevenz(`x -y "${path.basename(inner7z)}" 'Zalo-${version}/plugins/capture/*' -o${captureOut}`);
-  }
-
-  const captureSrc = path.join(captureOut, `Zalo-${version}`, 'plugins', 'capture');
   fs.ensureDirSync(TARGET);
   fs.copySync(captureSrc, TARGET, { overwrite: true });
   logger.success('ZaloCall.exe + Qt runtime installed');

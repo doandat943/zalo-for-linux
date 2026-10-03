@@ -14,8 +14,8 @@ async function main() {
         process.exit(0);
       }
 
-      logger.step('Step 2: Downloading Zalo DMG');
-      await require('./download-dmg.js').main();
+      logger.step('Step 2: Downloading Zalo DMG and Windows installer');
+      await require('./download.js').main();
 
       logger.step('Step 3: Preparing ZaDark');
       await require('./prepare-zadark.js').main();
