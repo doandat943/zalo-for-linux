@@ -13,6 +13,7 @@ ximagesink (plugins-base).
 """
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -21,7 +22,15 @@ import dbus
 import dbus.mainloop.glib
 from dbus.mainloop.glib import DBusGMainLoop
 
-DISPLAY2 = sys.argv[1] if len(sys.argv) > 1 else ":99"
+# Only a bare X11 display spec (e.g. ":99" or ":99.0") is valid here; this
+# value is interpolated into a gst-launch argument and the DISPLAY env var,
+# so reject anything else to prevent argument/environment injection.
+_DISPLAY_RE = re.compile(r"^:[0-9]+(\.[0-9]+)?$")
+_raw_display = sys.argv[1] if len(sys.argv) > 1 else ":99"
+if not _DISPLAY_RE.match(_raw_display):
+    print("invalid DISPLAY argument: %r" % _raw_display, file=sys.stderr)
+    sys.exit(1)
+DISPLAY2 = _raw_display
 # KDE's portal backend rejects app ids without a matching .desktop file.
 APP_ID = sys.argv[2] if len(sys.argv) > 2 else "org.kde.konsole"
 
