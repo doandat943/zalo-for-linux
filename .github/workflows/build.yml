@@ -6,6 +6,11 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'          
+      - '**/.gitignore'
+      - '**/LICENSE'   
+      - '**/LICENSE.*'
   workflow_dispatch:
     inputs:
       zalo_version:
@@ -184,6 +189,13 @@ jobs:
           ```bash
           # Install with Gear Lever
           flatpak run it.mijorus.gearlever --integrate <downloaded-file>
+          ```
+
+          Or you can run the AppImage manually:
+
+          ```bash
+          chmod +x <downloaded-file> # Get the filename with ls, or you can use your file manager's GUI
+          ./<downloaded-file>
           ```
 
           > 🍷 **Full variants** (portable wine bundled inside — the call feature, voice/video/share screen, works right after the first launch with no download; larger files ~430MB):
