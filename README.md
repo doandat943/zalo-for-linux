@@ -28,7 +28,7 @@ We strongly recommend using **Gear Lever** or **AM** to integrate the AppImage p
 
 **Note:** Zalo for Linux comes with embed update info. You don't need to setup any update infomations for updating the apps.
 
-- For AM users:
+#### For AM users:
 
 1. Install **AM** from [AM's guide](https://github.com/ivan-hc/AM#using-the-am-installer-script-to-choose-between-local-and-system-wide-installation)
 2. Run this command to install Zalo:
@@ -40,19 +40,19 @@ We strongly recommend using **Gear Lever** or **AM** to integrate the AppImage p
    <img width="747" height="600" alt="installer" src="./sample/am-guide.png" />
 
    *You can choose what variants you like from this, AM will download the correct version for you.*
-4. The app is now installed. You can now go to your system's application launcher to launch Zalo.
+4. The app is **now installed**. You can now go to your system's application launcher to launch Zalo.
 
    Or run from the command line:
    ```bash
    zalo
    ```
 5. How to update:
-   You just need to run this command, it will automatically update all your AM packages (including Zalo) for you:
+   You just need to run this command, it will **automatically update all your AM packages (including Zalo)** for you:
    ```bash
    am -u
    ```
 
-- For Gear Lever users:
+#### For Gear Lever users:
 
 1. Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
 2. Install **Gear Lever** from [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever).
@@ -62,6 +62,18 @@ We strongly recommend using **Gear Lever** or **AM** to integrate the AppImage p
 6. How to update:
    - Open **Gear Lever**.
    - If any updates is available, the button **No updates available** will turn to **Update**, just simply click to the button and Zalo is updated.
+
+#### Run it manually (this is not recommended):
+
+1. Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
+2. Make it executable:
+   ```bash
+   chmod +x <downloaded-file> # Get the filename with ls, or you can use your file manager's GUI
+   ```
+3. Run it manually by this command:
+   ```bash
+   ./<downloaded-file>
+4. For updates, just **simply redownload the latest `.AppImage` file** from the **Releases** page, then **repeat step 2 and 3**.
 
 *NOTE: Remember to quit the app and relaunch again after updates, for new changes can be applied in your side.* 
    
