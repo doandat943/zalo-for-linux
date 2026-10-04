@@ -7,9 +7,17 @@ on:
     branches:
       - main
     paths-ignore:
-      - '**.md'          
+      - '**.md'
       - '**/.gitignore'
-      - '**/LICENSE'   
+      - '**/LICENSE'
+      - '**/LICENSE.*'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - '**/.gitignore'
+      - '**/LICENSE'
       - '**/LICENSE.*'
   workflow_dispatch:
     inputs:
@@ -28,6 +36,10 @@ on:
         required: false
         default: ''
         type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: write
@@ -58,7 +70,7 @@ jobs:
               sudo apt update &&
               sudo apt install -y build-essential liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc gcc-multilib g++ clang libclang-dev llvm libc6-dev-i386 libx11-dev libxcb1-dev libx11-dev:i386 libxcb1-dev:i386 libxext-dev:i386 zsync
           - arch: aarch64
-            runner: ubuntu-24.04-arm 
+            runner: ubuntu-24.04-arm
             sys_deps: >
               sudo apt update &&
               sudo apt install -y build-essential liblzma-dev p7zip-full gcc g++ clang libclang-dev llvm libc6-dev libx11-dev libxcb1-dev libxext-dev
@@ -76,7 +88,7 @@ jobs:
 
     - name: Setup Rust toolchain
       uses: dtolnay/rust-toolchain@stable
-        
+
     - name: Cache Electron binaries
       uses: actions/cache@v3
       with:
@@ -103,7 +115,7 @@ jobs:
         key: ${{ runner.os }}-${{ matrix.arch }}-cargo-${{ hashFiles('nativelibs/*/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-${{ matrix.arch }}-cargo-
-          
+
     - name: Install Node.js dependencies
       run: npm ci --prefer-offline --no-audit
 
@@ -119,22 +131,22 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: npm run main
-        
+
     - name: Upload Original AppImage artifact
       if: steps.build.outputs.build == 'true' && steps.build.outputs.original_appimage_file != ''
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.build.outputs.original_appimage_name }}-${{ matrix.arch }}
         path: ${{ steps.build.outputs.original_appimage_file }}*
-        retention-days: 30
-        
+        retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
+
     - name: Upload ZaDark AppImage artifact
       if: steps.build.outputs.build == 'true' && steps.build.outputs.zadark_appimage_file != ''
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.build.outputs.zadark_appimage_name }}-${{ matrix.arch }}
         path: ${{ steps.build.outputs.zadark_appimage_file }}*
-        retention-days: 30
+        retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
 
     - name: Upload Full AppImage artifact (wine bundled, ZaDark)
       if: steps.build.outputs.build == 'true' && steps.build.outputs.full_appimage_file != ''
@@ -142,7 +154,7 @@ jobs:
       with:
         name: ${{ steps.build.outputs.full_appimage_name }}-${{ matrix.arch }}
         path: ${{ steps.build.outputs.full_appimage_file }}*
-        retention-days: 30
+        retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
 
     - name: Upload Full AppImage artifact (wine bundled, no ZaDark)
       if: steps.build.outputs.build == 'true' && steps.build.outputs.plainfull_appimage_file != ''
@@ -150,12 +162,12 @@ jobs:
       with:
         name: ${{ steps.build.outputs.plainfull_appimage_name }}-${{ matrix.arch }}
         path: ${{ steps.build.outputs.plainfull_appimage_file }}*
-        retention-days: 30
+        retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
 
   release:
     name: Release the AppImages
     needs: build
-    if: needs.build.outputs.build == 'true'
+    if: github.event_name != 'pull_request' && needs.build.outputs.build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -163,7 +175,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         ref: ${{ github.sha }}
-        
+
     - name: Download all AppImage artifacts
       uses: actions/download-artifact@v4
       with:
@@ -185,7 +197,7 @@ jobs:
           It is recommended to use [Gear Lever](https://github.com/mijorus/gearlever) or [AM](https://github.com/ivan-hc/AM) to manage and integrate the AppImage.
 
           Choose the appropriate AppImage for your system architecture below (x64 or aa64) and download it.
-          
+
           ```bash
           # Install with Gear Lever
           flatpak run it.mijorus.gearlever --integrate <downloaded-file>
