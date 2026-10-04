@@ -14,11 +14,16 @@ async function main() {
 
   let content = fs.readFileSync(mainJsPath, 'utf8');
 
-  // Enable title bar on Linux: T,frame:!1 -> T,frame:!0
-  if (content.includes('T,frame:!1')) {
-    content = content.replace(/T,frame:!1/g, 'T,frame:!0');
+  // Enable the native title bar on Linux, except on native Wayland where
+  // Electron 22 draws none: there the window stays frameless and gets its
+  // buttons from patch-wayland-titlebar (plugins/wayland-titlebar sets the flag).
+  const FRAME = 'T,frame:!global.__zaloNativeWayland';
+  if (content.includes('T,frame:!1') || content.includes('T,frame:!0')) {
+    content = content.replace(/T,frame:!(?:1|0)(?![\w.])/g, FRAME);
     fs.writeFileSync(mainJsPath, content, 'utf8');
-    logger.dim('Patched main.js: enabled title bar (T,frame:!0)');
+    logger.dim('Patched main.js: native title bar except on native Wayland');
+  } else if (content.includes(FRAME)) {
+    logger.dim('main.js title bar already patched');
   } else {
     logger.warn('Pattern T,frame:!1 not found in main.js, skipping patch');
   }

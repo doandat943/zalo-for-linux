@@ -41,11 +41,15 @@ const launcherBadgePlugin = require('./plugins/launcher-badge');
 const userscriptsPlugin = require('./plugins/userscripts');
 const zcallBridgePlugin = require('./plugins/zcall-bridge');
 const trayHost = require('./plugins/tray-host');
+const waylandTitlebarPlugin = require('./plugins/wayland-titlebar');
 // Created with the main window: the screen module is not usable before 'ready'.
 let windowState = null;
 const startHidden = require('./plugins/start-hidden').createStartHiddenController({
   onMaximize: () => { if (windowState) windowState.requestMaximize(); }
 });
+
+// Before Zalo's bootstrap: the main window's frame option depends on it.
+waylandTitlebarPlugin.init({ app, ipcMain });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,14 +68,6 @@ function toggleDevTools() {
   } catch (e) {
     console.error('Toggle DevTools failed', e);
   }
-}
-
-// Native Wayland windows cannot be moved by the app, only X11/XWayland ones.
-function isNativeWayland() {
-  const platform = app.commandLine.getSwitchValue('ozone-platform');
-  const hint = app.commandLine.getSwitchValue('ozone-platform-hint');
-  return platform === 'wayland' ||
-    (hint === 'wayland' || hint === 'auto') && process.env.XDG_SESSION_TYPE === 'wayland';
 }
 
 function showMainWindow() {
@@ -142,7 +138,8 @@ app.on('browser-window-created', (_evt, win) => {
       if (!windowState) {
         windowState = require('./plugins/window-state').createWindowStateController({
           screen,
-          canPosition: !isNativeWayland(),
+          // Native Wayland windows cannot be moved by the app (plugins/wayland-titlebar).
+          canPosition: !global.__zaloNativeWayland,
           stateFile: path.join(app.getPath('userData'), 'zalo-linux-window-state.json')
         });
       }
@@ -249,6 +246,7 @@ app.once('ready', () => {
   launcherBadgePlugin.register({ app, ipcMain });
   screenshotPlugin.register({ ipcMain });
   userscriptsPlugin.register({ app, ipcMain, BrowserWindow });
+  waylandTitlebarPlugin.register({ app, ipcMain, BrowserWindow });
   zcallBridgePlugin.launch({ userDataDir: app.getPath('userData') });
   zcallBridgePlugin.injectSwitch({ app, userDataDir: app.getPath('userData') });
 });
