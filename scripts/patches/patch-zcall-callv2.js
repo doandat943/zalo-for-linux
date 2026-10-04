@@ -32,8 +32,8 @@ const REPLACEMENTS = [
   // 1. channel addresses: TCP ports on Linux (inline platform checks — no new
   //    variables: the module scope already uses every short name)
   {
-    from: /y="win32"===n\("([^"]+)"\)\.platform\(\),g=y\?"\\\\\\\\.\\\\pipe\\\\PipeZCallSend":"\/tmp\/socketzalosend2021",v=y\?"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv":"\/tmp\/socketzalorecv2021"/,
-    to: 'y="win32"===n("$1").platform(),g=y?"\\\\\\\\.\\\\pipe\\\\PipeZCallSend":"linux"===n("$1").platform()?29632:"/tmp/socketzalosend2021",v=y?"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv":"linux"===n("$1").platform()?29631:"/tmp/socketzalorecv2021"',
+    from: /g="win32"===n\("([^"]+)"\)\.platform\(\),y=g\?"\\\\\\\\.\\\\pipe\\\\PipeZCallSend":"\/tmp\/socketzalosend2021",v=g\?"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv":"\/tmp\/socketzalorecv2021"/,
+    to: 'g="win32"===n("$1").platform(),y=g?"\\\\\\\\.\\\\pipe\\\\PipeZCallSend":"linux"===n("$1").platform()?29632:"/tmp/socketzalosend2021",v=g?"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv":"linux"===n("$1").platform()?29631:"/tmp/socketzalorecv2021"',
   },
   // 2. binary path: add Linux branch before the macOS branch
   {
@@ -50,8 +50,8 @@ const REPLACEMENTS = [
   //    text) — without the anchor, every re-run of the patch script nests
   //    another dead linux branch into the ternary.
   {
-    from: ';A=i(e,[v,g]),A.stdout.setEncoding("utf8")',
-    to: ';"linux"===process.platform?(i(process.env.ZCALL_WINE||"wine",[o.join(__dirname,"..","native","qt-call-and-cap","pipebridge.exe"),"29631","29632"]),A=i(process.env.ZCALL_WINE||"wine",[e,"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv","\\\\\\\\.\\\\pipe\\\\PipeZCallSend"])):A=i(e,[v,g]),A.stdout.setEncoding("utf8")',
+    from: ';A=i(e,[v,y]),A.stdout.setEncoding("utf8")',
+    to: ';"linux"===process.platform?(i(process.env.ZCALL_WINE||"wine",[o.join(__dirname,"..","native","qt-call-and-cap","pipebridge.exe"),"29631","29632"]),A=i(process.env.ZCALL_WINE||"wine",[e,"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv","\\\\\\\\.\\\\pipe\\\\PipeZCallSend"])):A=i(e,[v,y]),A.stdout.setEncoding("utf8")',
     already: ';"linux"===process.platform?(BB||(BB=!0,TK=',
   },
   // 4. listen: TCP on Linux, unix socket elsewhere
@@ -60,27 +60,27 @@ const REPLACEMENTS = [
     to: 'I.listen("linux"===process.platform?{port:v,host:"127.0.0.1"}:v,(',
   },
   {
-    from: 'C.listen(g,(',
-    to: 'C.listen("linux"===process.platform?{port:g,host:"127.0.0.1"}:g,(',
+    from: 'C.listen(y,(',
+    to: 'C.listen("linux"===process.platform?{port:y,host:"127.0.0.1"}:y,(',
   },
-  // 5. EADDRINUSE recovery: skip fs.unlink on Linux (v/g are ports there)
+  // 5. EADDRINUSE recovery: skip fs.unlink on Linux (v/y are ports there)
   {
-    from: 'y||a.unlink(v,',
-    to: '"linux"===process.platform||y||a.unlink(v,',
+    from: 'g||a.unlink(v,',
+    to: '"linux"===process.platform||g||a.unlink(v,',
   },
   {
-    from: 'y||(U=!1,a.unlink(g,',
-    to: '"linux"===process.platform||y||(U=!1,a.unlink(g,',
+    from: 'g||(U=!1,a.unlink(y,',
+    to: '"linux"===process.platform||g||(U=!1,a.unlink(y,',
   },
   // 6. Re-send the init payload right before every makeCall. The helper
   //    rejects makeCall with error -11 ("init_error") if it has not seen
-  //    the init data yet; sending O first (same TCP stream, order
+  //    the init data yet; sending D first (same TCP stream, order
   //    preserved) removes that race.
   {
-    from: '.on("call-send-to-native",((e,t)=>{t._optional?delete t._optional:K(),D(t)}))',
-    to: '.on("call-send-to-native",((e,t)=>{t._optional?delete t._optional:K(),t&&"makeCall"===t.command&&O&&D(O),D(t)}))',
+    from: '.on("call-send-to-native",((e,t)=>{t._optional?delete t._optional:K(),O(t)}))',
+    to: '.on("call-send-to-native",((e,t)=>{t._optional?delete t._optional:K(),t&&"makeCall"===t.command&&D&&O(D),O(t)}))',
     // step 14 rewrites the start of this handler
-    already: 't&&"makeCall"===t.command&&O&&D(O),D(t)}))',
+    already: 't&&"makeCall"===t.command&&D&&O(D),O(t)}))',
   },
   // 7. Fix the send queue's F flag. On the non-win32 path the flag is only
   //    cleared when the helper sends data back on the send channel — which
@@ -96,10 +96,10 @@ const REPLACEMENTS = [
   //    passes it to pipebridge, and requires it as the first line of every
   //    TCP connection. Drops connections that do not present the token.
   {
-    from: 'let S,D,O,N,A,C=null,I=null,L=!1,P=[],M=!1,k=!0,x=[],F=!1,U=!1',
-    to: 'let S,D,O,N,A,C=null,I=null,L=!1,P=[],M=!1,k=!0,x=[],F=!1,U=!1,TK=null',
+    from: 'let S,O,D,N,A,C=null,I=null,L=!1,P=[],M=!1,k=!0,x=[],F=!1,U=!1',
+    to: 'let S,O,D,N,A,C=null,I=null,L=!1,P=[],M=!1,k=!0,x=[],F=!1,U=!1,TK=null',
   },
-  // 9. Reset the "native started" flag when the helper spawn FAILS (e.g.
+  // 9. Reset the "native started" flag when the helper spawn FAILS (e.y.
   //    wine missing). Without this, a failed first spawn leaves L=true
   //    forever and later call attempts never re-spawn until app restart.
   {
@@ -119,12 +119,12 @@ const REPLACEMENTS = [
     to: '[e,"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv","\\\\\\\\.\\\\pipe\\\\PipeZCallSend"],{env:Object.assign({},process.env,{LD_PRELOAD:process.env.ZCALL_PROXY_SO||process.env.LD_PRELOAD||""})}))',
   },
   {
-    from: /e\.on\("data",\(([$\w]+)=>\{z\(\1\)\}\)\),e\.on\("end"/,
-    to: 'e.on("data",(n=>{if(e.t!==!0){e.t=(e.t||"")+n.toString();const p=e.t.indexOf("\\n");if(p<0)return;if(e.t.slice(0,p)!==TK)return e.destroy();n=e.t.slice(p+1),e.t=!0}n&&z(n)})),e.on("end"',
+    from: /e\.on\("data",\(([$\w]+)=>\{Y\(\1\)\}\)\),e\.on\("end"/,
+    to: 'e.on("data",(n=>{if(e.t!==!0){e.t=(e.t||"")+n.toString();const p=e.t.indexOf("\\n");if(p<0)return;if(e.t.slice(0,p)!==TK)return e.destroy();n=e.t.slice(p+1),e.t=!0}n&&Y(n)})),e.on("end"',
   },
   {
-    from: /e\.on\("data",\(([$\w]+)=>\{d\.zsymb\((\d+),"([^"]+)",\["serverSend on data","([^"]+)"\],\1\),y\|\|\(F=!1,([$\w]+)\(e\)\)\}\)\)/,
-    to: 'e.on("data",($1=>{if(e.t!==!0){e.t=(e.t||"")+$1.toString();const i=e.t.indexOf("\\n");if(i<0)return;if(e.t.slice(0,i)!==TK)return e.destroy();$1=e.t.slice(i+1),e.t=!0}d.zsymb($2,"$3",["serverSend on data","$4"],$1),y||(F=!1,$5(e))}))',
+    from: /e\.on\("data",\(([$\w]+)=>\{d\.zsymb\((\d+),"([^"]+)",\["serverSend on data","([^"]+)"\],\1\),g\|\|\(F=!1,([$\w]+)\(e\)\)\}\)\)/,
+    to: 'e.on("data",($1=>{if(e.t!==!0){e.t=(e.t||"")+$1.toString();const i=e.t.indexOf("\\n");if(i<0)return;if(e.t.slice(0,i)!==TK)return e.destroy();$1=e.t.slice(i+1),e.t=!0}d.zsymb($2,"$3",["serverSend on data","$4"],$1),g||(F=!1,$5(e))}))',
     already: /e\.t=!0\}[$\w]+\(e\),d\.zsymb\(/,
   },
   // 11. Helper restart support. The Wayland screen bridge restarts ZaloCall
@@ -150,15 +150,15 @@ const REPLACEMENTS = [
   //     process). The queue is flushed when pipebridge reconnects (token
   //     line below) or after each helper message.
   {
-    from: 'D=t=>{y?V(e,t):G(e,t)',
-    // No trailing `}`: D is the last statement of the connection callback
-    // and the original `}}))` closes D, the callback and C.on( — adding a
+    from: 'O=t=>{g?V(e,t):G(e,t)',
+    // No trailing `}`: O is the last statement of the connection callback
+    // and the original `}}))` closes O, the callback and C.on( — adding a
     // brace here breaks the bundle syntax.
-    to: 'D=t=>{y?V(e,t):e&&!e.destroyed?G(e,t):x.push(t)',
+    to: 'O=t=>{g?V(e,t):e&&!e.destroyed?G(e,t):x.push(t)',
   },
   {
-    from: /e\.t=!0\}d\.zsymb\((\d+),"([^"]+)",\["serverSend on data","([^"]+)"\],([$\w]+)\),y\|\|\(F=!1,([$\w]+)\(e\)\)/,
-    to: 'e.t=!0}$5(e),d.zsymb($1,"$2",["serverSend on data","$3"],$4),y||(F=!1,$5(e))',
+    from: /e\.t=!0\}d\.zsymb\((\d+),"([^"]+)",\["serverSend on data","([^"]+)"\],([$\w]+)\),g\|\|\(F=!1,([$\w]+)\(e\)\)/,
+    to: 'e.t=!0}$5(e),d.zsymb($1,"$2",["serverSend on data","$3"],$4),g||(F=!1,$5(e))',
   },
   {
     from: /else if\(e\)\{if\(x\.length\)\{const ([$\w]+)=x\.shift\(\);([$\w]+)\(e,\1\)/,
@@ -177,7 +177,7 @@ const REPLACEMENTS = [
   //     send the "init" message non-optional, which starts the helper at
   //     launch. In "lazy"/"off" mode the plugin sets
   //     global.__zcallDeferStartup: drop that message instead. The init
-  //     payload itself (O, from call-init) is re-sent before every makeCall
+  //     payload itself (D, from call-init) is re-sent before every makeCall
   //     (step 6).
   {
     from: '.on("call-send-to-native",((e,t)=>{t._optional?delete t._optional:K()',

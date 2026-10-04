@@ -1,12 +1,23 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const logger = require('./utils/logger');
 
 const ZALO_DMG_PATTERN = 'https://res-download-pc.zadn.vn/mac/ZaloSetup-universal-VERSION.dmg';
+const ZALO_WIN_PATTERN = 'https://res-download-pc.zadn.vn/win/ZaloSetup-VERSION.exe';
 const TEMP_DIR = path.join(__dirname, '..', 'temp');
 
 async function main() {
+  await downloadDmg();
+  try {
+    await downloadWindows();
+  } catch (error) {
+    logger.warn('Windows installer download failed: ' + error.message);
+  }
+}
+
+async function downloadDmg() {
   // Create directories
   if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -62,6 +73,55 @@ async function main() {
     logger.error('Download failed:', error.message);
     process.exit(1);
   }
+}
+
+async function downloadWindows() {
+  const version = (process.env.ZALO_WIN_VERSION || await getWindowsVersion()).trim();
+  const exeUrl = ZALO_WIN_PATTERN.replace('VERSION', version);
+  const exeFilename = path.basename(new URL(exeUrl).pathname);
+  const exePath = path.join(TEMP_DIR, exeFilename);
+  process.env.ZALO_WIN_VERSION = version;
+
+  if (fs.existsSync(exePath)) {
+    const stats = fs.statSync(exePath);
+    const fileSize = (stats.size / 1024 / 1024).toFixed(2);
+    logger.info(`Found existing Zalo Windows v${version} (${fileSize} MB)`);
+
+    if (!process.env.FORCE_DOWNLOAD) {
+      logger.success('Download skipped - file already exists');
+      return;
+    }
+
+    logger.info('Force download enabled, removing existing file...');
+    fs.unlinkSync(exePath);
+  }
+
+  logger.info(`Downloading Zalo Windows v${version}...`);
+  await downloadFile(exeUrl, exePath);
+
+  if (!fs.existsSync(exePath)) {
+    throw new Error('Download failed - file not found after download');
+  }
+
+  const stats = fs.statSync(exePath);
+  const fileSize = (stats.size / 1024 / 1024).toFixed(2);
+  logger.success(`Downloaded successfully: ${exeFilename} (${fileSize} MB)`);
+}
+
+async function getWindowsVersion() {
+  return new Promise((resolve, reject) => {
+    https.get('https://zalo.me/download/zalo-pc?utm=90000', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    }, (res) => {
+      if (res.statusCode === 302 && res.headers.location) {
+        const m = res.headers.location.match(/ZaloSetup-([0-9.]+)\.exe/);
+        if (m) return resolve(m[1]);
+      }
+      reject(new Error('Could not resolve Windows Zalo version'));
+    }).on('error', reject);
+  });
 }
 
 async function downloadFile(url, destination) {

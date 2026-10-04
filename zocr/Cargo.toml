@@ -1,0 +1,31 @@
+[package]
+name = "zocr-host"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+build = "build.rs"
+
+[dependencies]
+anyhow = "1"
+aes = { version = "0.8", features = ["zeroize"] }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+zeroize = "1"
+subtle = "2.6"
+libc = "0.2"
+signal-hook = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tiff"] }
+ort-sys = { version = "=2.0.0-rc.13", default-features = false, features = ["disable-linking"] }
+libloading = "0.8"
+clipper2-rust = "1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
