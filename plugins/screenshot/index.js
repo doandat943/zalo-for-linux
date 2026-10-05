@@ -7,7 +7,10 @@
 
 'use strict';
 
-const { exec, execSync } = require('child_process');
+const { exec, execSync, execFile } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { fileURLToPath } = require('url');
 
 // Screenshot tools (in priority order)
 const SCREENSHOT_TOOLS = [
@@ -35,26 +38,29 @@ function register({ ipcMain }) {
         const opts = args[0];
         const hideWindow = opts && opts.captureMode === false;
 
-        // Hide window for "screenshot without Zalo window" mode
-        if (hideWindow && _mainWindow && !_mainWindow.isDestroyed()) {
-          _mainWindow.hide();
-        }
-
         let success = false;
         try {
+          // hide() makes Zalo close background windows after 10s. Portal dialogs
+          // can take longer; Wayland also crashes on hide()/show() in Electron 22.
+          if (hideWindow && _mainWindow && !_mainWindow.isDestroyed()) {
+            if (global.__zaloNativeWayland || process.env.FLATPAK_ID || fs.existsSync('/.flatpak-info')) {
+              _mainWindow.minimize();
+            } else {
+              _mainWindow.hide();
+            }
+          }
           success = await _triggerScreenshot();
         } catch (e) {
           console.error('[Screenshot Plugin]', e.message);
-        }
-
-        // Restore window
-        if (hideWindow && _mainWindow && !_mainWindow.isDestroyed()) {
-          if (_mainWindow.isMinimized()) _mainWindow.restore();
-          _mainWindow.show();
-          _mainWindow.focus();
-          _mainWindow.moveTop();
-          if (!_mainWindow.webContents.isDestroyed()) {
-            _mainWindow.webContents.send('show-from-tray');
+        } finally {
+          if (hideWindow && _mainWindow && !_mainWindow.isDestroyed()) {
+            if (_mainWindow.isMinimized()) _mainWindow.restore();
+            _mainWindow.show();
+            _mainWindow.focus();
+            _mainWindow.moveTop();
+            if (!_mainWindow.webContents.isDestroyed()) {
+              _mainWindow.webContents.send('show-from-tray');
+            }
           }
         }
 
@@ -83,7 +89,14 @@ function register({ ipcMain }) {
   };
 }
 
-function _triggerScreenshot() {
+async function _triggerScreenshot() {
+  if (process.env.FLATPAK_ID || fs.existsSync('/.flatpak-info')) {
+    if ((process.env.XDG_CURRENT_DESKTOP || '').split(':').some(de => de.toUpperCase() === 'KDE')) {
+      const success = await _triggerPortalScreenshot(true);
+      if (success !== null) return success; // Cancellation must not open the portal.
+    }
+    return _triggerPortalScreenshot();
+  }
   return new Promise((resolve) => {
     for (const tool of SCREENSHOT_TOOLS) {
       try {
@@ -98,6 +111,41 @@ function _triggerScreenshot() {
     }
     console.warn('[Screenshot Plugin] No screenshot tool found');
     resolve(false);
+  });
+}
+
+function _triggerPortalScreenshot(spectacle = false) {
+  // Read through Electron's ASAR support; python cannot open files inside ASAR.
+  const script = fs.readFileSync(path.join(__dirname, 'portal.py'), 'utf8');
+  // This Flatpak app directory has the same path on the host. Spectacle can
+  // write here without granting access to Pictures or arbitrary host commands.
+  const directory = spectacle
+    ? fs.mkdtempSync(path.join(require('electron').app.getPath('userData'), 'screenshot-'))
+    : null;
+  const args = ['-c', script];
+  if (spectacle) args.push('--spectacle', path.join(directory, 'capture.png'));
+  return new Promise((resolve) => {
+    execFile('python3', args, { timeout: 120000 }, (err, stdout) => {
+      if (err) {
+        console.error('[Screenshot Plugin] Portal error:', err.message);
+        // Only an unavailable API falls back; timeout/failure after launch stops.
+        return resolve(spectacle && err.code === 3 ? null : false);
+      }
+      const uri = stdout.trim();
+      if (!uri) return resolve(false); // User cancelled.
+      try {
+        const { clipboard, nativeImage } = require('electron');
+        const image = nativeImage.createFromPath(fileURLToPath(uri));
+        if (image.isEmpty()) return resolve(false);
+        clipboard.writeImage(image);
+        resolve(true);
+      } catch (e) {
+        console.error('[Screenshot Plugin] Portal image error:', e.message);
+        resolve(false);
+      }
+    });
+  }).finally(() => {
+    if (directory) fs.rmSync(directory, { recursive: true, force: true });
   });
 }
 
