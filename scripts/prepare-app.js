@@ -185,13 +185,13 @@ async function extractWindows() {
       throw new Error('7z is required for Windows installer extraction.');
     }
 
-    const inner7z = path.join(TEMP_DIR, `zcall-bridge-${version}.7z`);
+    const inner7z = path.join(TEMP_DIR, `Zalo-Win-${version}.7z`);
     if (!fs.existsSync(inner7z)) {
       logger.info(`Extracting installer payload from ${selectedFile.name}...`);
-      execSync(`7z e -y "${selectedFile.path}" '$PLUGINSDIR/app-32.7z' -ozcall-bridge-extract`, {
+      execSync(`7z e -y "${selectedFile.path}" '$PLUGINSDIR/app-32.7z' -oZalo-Win-extract`, {
         cwd: TEMP_DIR, stdio: 'pipe'
       });
-      fs.copyFileSync(path.join(TEMP_DIR, 'zcall-bridge-extract', 'app-32.7z'), inner7z);
+      fs.copyFileSync(path.join(TEMP_DIR, 'Zalo-Win-extract', 'app-32.7z'), inner7z);
     }
 
     const extractOut = path.join(TEMP_DIR, `Zalo-Win-${version}`);
