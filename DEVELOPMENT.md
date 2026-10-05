@@ -1,5 +1,7 @@
 # Development
 
+**English** | [Tiếng Việt](./readme/DEVELOPMENT.vi.md)
+
 This document covers building Zalo for Linux from source, including the
 toolchain, scripts, and how to add new patches or native addons.
 

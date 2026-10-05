@@ -1,5 +1,7 @@
 # Zalo for Linux 🐧
 
+**English** | [Tiếng Việt](./readme/README.vi.md)
+
 [![Build Status](https://github.com/doandat943/zalo-for-linux/actions/workflows/build.yml/badge.svg)](https://github.com/doandat943/zalo-for-linux/actions/workflows/build.yml)
 
 An unofficial, community-driven port of the Zalo desktop application for **Linux only**, created by repackaging the official macOS client into a standard AppImage with integrated ZaDark.

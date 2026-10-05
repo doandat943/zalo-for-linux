@@ -1,5 +1,7 @@
 # Features added in this project that original Zalo doesn't have ✨
 
+**English** | [Tiếng Việt](./readme/FEATURES.vi.md)
+
 This document show the added features included in **Zalo for Linux**, which doesn't have in the official version.
 
 ---

@@ -1,5 +1,7 @@
 # nativelibs
 
+**English** | [Tiếng Việt](../readme/nativelibs.vi.md)
+
 Linux reimplementations of Zalo's proprietary macOS native addons.
 
 ## Why?

@@ -1,5 +1,7 @@
 # Architecture
 
+**English** | [Tiếng Việt](./readme/ARCHITECTURE.vi.md)
+
 This document explains how Zalo for Linux works under the hood.
 
 ## Overview

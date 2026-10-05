@@ -1,5 +1,7 @@
 # Known Issues & Workarounds 🛠️
 
+**English** | [Tiếng Việt](./readme/KNOWN_ISSUES.vi.md)
+
 This document tracks current limitations and historical issues that have been addressed in **Zalo for Linux**, along with credits to the community contributors who helped resolve them.
 
 ---
