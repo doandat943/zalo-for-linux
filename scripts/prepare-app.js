@@ -310,6 +310,9 @@ async function extractAppAsar() {
 
   const { main: patchZocrRuntime } = require('./patches/patch-zocr-runtime');
   await patchZocrRuntime();
+
+  const { main: patchflatpakFileTransfer } = require('./patches/patch-flatpak-file-transfer');
+  await patchflatpakFileTransfer();
 }
 
 function commandExists(command) {
