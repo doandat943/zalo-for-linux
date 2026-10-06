@@ -2,7 +2,7 @@
 
 [English](../README.md) | **Tiếng Việt**
 
-[![Build Status](https://github.com/doandat943/zalo-for-linux/actions/workflows/build.yml/badge.svg)](https://github.com/doandat943/zalo-for-linux/actions/workflows/build.yml)
+[![Build Status](https://github.com/VN-Linux-Family/zalo-for-linux/actions/workflows/build.yml/badge.svg)](https://github.com/VN-Linux-Family/zalo-for-linux/actions/workflows/build.yml)
 
 Bản port Zalo desktop không chính thức, do cộng đồng phát triển, **chỉ dành cho Linux**. Ứng dụng được đóng gói lại từ bản Zalo chính thức cho macOS thành một file AppImage tiêu chuẩn, có tích hợp sẵn ZaDark.
 
@@ -10,7 +10,7 @@ Cảm ơn **realdtn2** đã đưa ra giải pháp: [realdtn2/zalo-linux-2026](ht
 
 ## ⚠️ Lưu ý quan trọng: Các lỗi đã biết
 
-- **➖ Đã khắc phục một phần: Không gọi hoặc nhận cuộc gọi được:** Cảm ơn @collyn đã dựng Wine wrapper để giải quyết vấn đề này. Xem [PR #62](https://github.com/doandat943/zalo-for-linux/pull/62) để biết thêm chi tiết. Hiện tại tính năng gọi chưa dùng được trên aarch64, vì `zcall` của Windows chỉ hỗ trợ x86_64.
+- **➖ Đã khắc phục một phần: Không gọi hoặc nhận cuộc gọi được:** Cảm ơn @collyn đã dựng Wine wrapper để giải quyết vấn đề này. Xem [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) để biết thêm chi tiết. Hiện tại tính năng gọi chưa dùng được trên aarch64, vì `zcall` của Windows chỉ hỗ trợ x86_64.
 
 > 💡 **Danh sách đầy đủ các lỗi đã sửa, cách khắc phục tạm thời và ghi nhận đóng góp của cộng đồng nằm trong [KNOWN_ISSUES.vi.md](./KNOWN_ISSUES.vi.md).**
 
@@ -56,7 +56,7 @@ Chúng mình khuyên bạn nên dùng **Gear Lever** hoặc **AM** để AppImag
 
 #### Nếu bạn dùng Gear Lever
 
-1. Tải file `.AppImage` mới nhất ở trang [**Releases**](https://github.com/doandat943/zalo-for-linux/releases).
+1. Tải file `.AppImage` mới nhất ở trang [**Releases**](https://github.com/VN-Linux-Family/zalo-for-linux/releases).
 2. Cài **Gear Lever** từ [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever).
 3. Mở **Gear Lever**.
 4. Bấm nút **"Open"** ở góc trên bên trái rồi chọn file `.AppImage` vừa tải.
@@ -67,7 +67,7 @@ Chúng mình khuyên bạn nên dùng **Gear Lever** hoặc **AM** để AppImag
 
 #### Chạy thủ công (không khuyến khích)
 
-1. Tải file `.AppImage` mới nhất ở trang [**Releases**](https://github.com/doandat943/zalo-for-linux/releases).
+1. Tải file `.AppImage` mới nhất ở trang [**Releases**](https://github.com/VN-Linux-Family/zalo-for-linux/releases).
 2. Cấp quyền thực thi cho file:
    ```bash
    chmod +x <tên-file-đã-tải> # Xem tên file bằng lệnh ls, hoặc dùng trình quản lý file
@@ -101,7 +101,7 @@ Các bước:
 
 ```bash
 # Clone repository
-git clone https://github.com/doandat943/zalo-for-linux.git
+git clone https://github.com/VN-Linux-Family/zalo-for-linux.git
 cd zalo-for-linux
 # Khởi tạo hoặc cập nhật submodule
 git submodule update --init --recursive

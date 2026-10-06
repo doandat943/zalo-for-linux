@@ -2,7 +2,7 @@
 
 **English** | [Tiếng Việt](./readme/README.vi.md)
 
-[![Build Status](https://github.com/doandat943/zalo-for-linux/actions/workflows/build.yml/badge.svg)](https://github.com/doandat943/zalo-for-linux/actions/workflows/build.yml)
+[![Build Status](https://github.com/VN-Linux-Family/zalo-for-linux/actions/workflows/build.yml/badge.svg)](https://github.com/VN-Linux-Family/zalo-for-linux/actions/workflows/build.yml)
 
 An unofficial, community-driven port of the Zalo desktop application for **Linux only**, created by repackaging the official macOS client into a standard AppImage with integrated ZaDark.
 
@@ -10,7 +10,7 @@ Thanks **realdtn2** for the solution: [realdtn2/zalo-linux-2026](https://github.
 
 ## ⚠️ Important: Known Issues
 
-- **➖ Partly-fixed: Can't make or receive calls:** Thanks to @collyn for setting up a Wine wrapper to solve this. See [PR #62](https://github.com/doandat943/zalo-for-linux/pull/62) for more info, but currently calling is not available on aarch64, because Windows `zcall` only supports x86_64.
+- **➖ Partly-fixed: Can't make or receive calls:** Thanks to @collyn for setting up a Wine wrapper to solve this. See [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) for more info, but currently calling is not available on aarch64, because Windows `zcall` only supports x86_64.
 
 > 💡 **For the full list of resolved issues, workarounds, and community credits, see [KNOWN_ISSUES.md](./KNOWN_ISSUES.md).**
 
@@ -56,7 +56,7 @@ We strongly recommend using **Gear Lever** or **AM** to integrate the AppImage p
 
 #### For Gear Lever users:
 
-1. Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
+1. Download the latest `.AppImage` file from the [**Releases**](https://github.com/VN-Linux-Family/zalo-for-linux/releases) page.
 2. Install **Gear Lever** from [Flathub](https://flathub.org/en/apps/it.mijorus.gearlever).
 3. Open **Gear Lever**.
 4. Click the **"Open"** button in the top-left corner and select the `.AppImage` file you downloaded.
@@ -67,7 +67,7 @@ We strongly recommend using **Gear Lever** or **AM** to integrate the AppImage p
 
 #### Run it manually (this is not recommended):
 
-1. Download the latest `.AppImage` file from the [**Releases**](https://github.com/doandat943/zalo-for-linux/releases) page.
+1. Download the latest `.AppImage` file from the [**Releases**](https://github.com/VN-Linux-Family/zalo-for-linux/releases) page.
 2. Make it executable:
    ```bash
    chmod +x <downloaded-file> # Get the filename with ls, or you can use your file manager's GUI
@@ -101,7 +101,7 @@ Steps:
 
 ```bash
 # Clone the repository
-git clone https://github.com/doandat943/zalo-for-linux.git
+git clone https://github.com/VN-Linux-Family/zalo-for-linux.git
 cd zalo-for-linux
 # Then initialize or update submodules
 git submodule update --init --recursive
