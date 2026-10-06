@@ -173,9 +173,18 @@ async function build(buildName = '', outputSuffix = '') {
     const archSuffix = (process.arch === 'arm64' || process.arch === 'aarch64') ? '-aarch64' : '-x86_64';
 
     // Set artifact name and build command based on build type
+    const target = process.env.BUILDTARGET || 'AppImage';
     let artifactName;
     let buildCommand;
+    let buildCommandst2 = '';
     let zadarkVersion = null;
+    let ext = 'AppImage';
+    switch (target) {
+      case 'deb': ext = 'deb'; break;
+      case 'rpm': ext = 'rpm'; break;
+      case 'pacman': ext = 'pkg.tar.zst'; break;
+      case 'tar.gz': ext = 'tar.gz'; break;
+    }
 
     if (outputSuffix === '-ZaDark' || outputSuffix === '-Full') {
       // Read ZaDark version for custom naming (the Full variant also builds
@@ -191,21 +200,28 @@ async function build(buildName = '', outputSuffix = '') {
           logger.warn('Could not read ZaDark version, using "unknown"');
         }
       }
-
+      
       const variantSuffix = outputSuffix === '-Full' ? '-Full' : '';
-      artifactName = `Zalo-${ZALO_VERSION}+ZaDark-${zadarkVersion}-${commitHash}${variantSuffix}${archSuffix}.AppImage`;
-      buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
-      buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
+
+      artifactName = `Zalo-${ZALO_VERSION}+ZaDark-${zadarkVersion}-${commitHash}${variantSuffix}${archSuffix}.${ext}`;
+      buildCommand = `npx electron-builder --linux --config.linux.target="${target}" --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
+      if (target === 'AppImage') {
+        buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
+      }  
       logger.info(`Building ${buildName} with Zalo: ${ZALO_VERSION}, ZaDark: ${zadarkVersion}, Commit: ${commitHash}`);
     } else if (outputSuffix === '-PlainFull') {
-      artifactName = `Zalo-${ZALO_VERSION}-Original-${commitHash}-Full${archSuffix}.AppImage`;
-      buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
-      buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
+      artifactName = `Zalo-${ZALO_VERSION}-Original-${commitHash}-Full${archSuffix}.${ext}`;
+      buildCommand = `npx electron-builder --linux --config.linux.target="${target}" --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
+      if (target === 'AppImage') {
+        buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
+      }
       logger.info(`Building ${buildName} with Zalo: ${ZALO_VERSION}, Commit: ${commitHash}`);
     } else {
-      artifactName = `Zalo-${ZALO_VERSION}-Original-${commitHash}${archSuffix}.AppImage`;
-      buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
-      buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
+      artifactName = `Zalo-${ZALO_VERSION}-Original-${commitHash}${archSuffix}.${ext}`;
+      buildCommand = `npx electron-builder --linux --config.linux.target="${target}" --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
+      if (target === 'AppImage') {
+        buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
+      }
       logger.info(`Building ${buildName} with Zalo: ${ZALO_VERSION}, Commit: ${commitHash}`);
     }
     // Write build-info.json to the app directory so the AppImage will contain its metadata
@@ -228,7 +244,7 @@ async function build(buildName = '', outputSuffix = '') {
     logger.dim(`Command (Stage 2): ${buildCommandst2}`);
 
     // Capture build output to get file information
-    const combinedCommand = `${buildCommand} && ${buildCommandst2}`;
+    const combinedCommand = buildCommandst2 ? `${buildCommand} && ${buildCommandst2}` : buildCommand;
 
     const buildOutput = execSync(combinedCommand, {
       stdio: 'pipe',
@@ -237,17 +253,19 @@ async function build(buildName = '', outputSuffix = '') {
     });
 
     // Parse build output to find AppImage file
-    const appImageMatch = buildOutput.match(/file=(dist\/.*\.AppImage)/);
-    let appImageFile = null;
-    let appImageName = null;
+    const escapedExt = ext.replace(/\./g, '\\.');
+    const outputRegex = new RegExp(`file=(dist\\/.*\\.${escapedExt})`); 
+    const outputMatch = buildOutput.match(outputRegex);  
+    let outputFile = null;
+    let outputName = null;
 
-    if (appImageMatch) {
-      appImageFile = appImageMatch[1];
-      appImageName = path.basename(appImageFile);
+    if (outputMatch) {
+      outputFile = outputMatch[1];
+      outputName = path.basename(outputFile);
 
       // Get file size
-      if (fs.existsSync(path.join(BASE_DIR, appImageFile))) {
-        const fullPath = path.join(BASE_DIR, appImageFile);
+      if (fs.existsSync(path.join(BASE_DIR, outputFile))) {
+        const fullPath = path.join(BASE_DIR, outputFile);
         const size = fs.statSync(fullPath).size;
         const sizeStr = size > 1024 * 1024
           ? `${Math.round(size / 1024 / 1024)}MB`
@@ -262,19 +280,19 @@ async function build(buildName = '', outputSuffix = '') {
           logger.warn('Could not calculate SHA256');
         }
         
-        logger.success(`Built ${appImageName} (${sizeStr})`);
+        logger.success(`Built ${outputName} (${sizeStr})`);
         logger.dim(`SHA256: ${fileSha256}`);
         
         builtFiles.push({
           type: outputSuffix === '-Full' ? '🍷 Full (ZaDark)' : outputSuffix === '-PlainFull' ? '🍷 Full' : outputSuffix === '-ZaDark' ? '🎨 ZaDark' : '📦 Original',
-          name: appImageName,
+          name: outputName,
           sizeStr
         });
       } else {
-        logger.warn(`AppImage file not found: ${appImageFile}`);
+        logger.warn(`Output file not found: ${outputFile}`);
       }
     } else {
-      logger.warn('Could not find AppImage path in build output');
+      logger.warn('Could not find the path in build output');
     }
 
     // Export build info to GitHub Actions
@@ -283,8 +301,8 @@ async function build(buildName = '', outputSuffix = '') {
 
       // Export build-specific info
       const specificOutputs = [
-        `${prefix}appimage_file=${appImageFile || ''}`,
-        `${prefix}appimage_name=${appImageName || ''}`
+        `${prefix}output_file=${outputFile || ''}`,
+        `${prefix}output_name=${outputName || ''}`
       ];
 
       specificOutputs.forEach(output => {
