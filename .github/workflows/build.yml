@@ -11,6 +11,7 @@ on:
       - '**/.gitignore'
       - '**/LICENSE'
       - '**/LICENSE.*'
+      - 'readme/**'
   pull_request:
     branches:
       - main
@@ -19,6 +20,7 @@ on:
       - '**/.gitignore'
       - '**/LICENSE'
       - '**/LICENSE.*'
+      - 'readme/**'
   workflow_dispatch:
     inputs:
       zalo_version:
