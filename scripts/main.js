@@ -27,9 +27,12 @@ async function main() {
       logger.step('Step 4.5: Setting up zcall-bridge (optional call engine)');
       try { await require('./setup-zcall-bridge.js').main(); }
       catch (e) { logger.warn('zcall-bridge setup failed, calls unavailable: ' + e.message); }
+
+      logger.step('Step 5: Cleaning unused files');
+      await require('./clean-unused.js').main();
     }
     if (process.env.BUILD === 'true') {
-      logger.step('Step 5: Building AppImages');
+      logger.step('Step 6: Building AppImages');
       await require('./build.js').main();
     }
   } catch (error) {
