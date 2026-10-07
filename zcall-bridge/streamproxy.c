@@ -298,6 +298,11 @@ xcb_get_image_reply_t *xcb_get_image_reply(xcb_connection_t *c,
                 size_t len = (size_t)r2->length * 4;
                 xcb_get_image_reply_t *out =
                     malloc(sizeof(xcb_get_image_reply_t) + len);
+                if (!out) {
+                    free(r2);
+                    plog("streamproxy: out-of-memory allocating xcb reply\n");
+                    return NULL;
+                }
                 memset(out, 0, sizeof(xcb_get_image_reply_t));
                 out->response_type = 1;
                 out->depth = r2->depth;
