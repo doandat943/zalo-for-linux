@@ -59,7 +59,7 @@ async function main() {
     // feature works out of the box with no first-run download.
     logger.step('PHASE 4: Building Zalo (Full — wine bundled, with ZaDark)');
     await bundleWineRuntime();
-    await build('(Full — wine bundled)', '-ZaDark-Full');
+    await build('(Full — wine bundled)', '-Zadark-Full');
     fs.rmSync(path.join(APP_DIR, 'native', 'wine-runtime'), { recursive: true, force: true });
 
     // Final summary

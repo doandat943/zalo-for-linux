@@ -44,11 +44,6 @@ const DEFAULTS_ORIGINAL = 'enableCall:!1,enableTag:!0,enableVideoCall:!1';
 const DEFAULTS_PATCHED = 'enableCall:!0,enableTag:!0,enableVideoCall:!0';
 
 async function main() {
-  // if we are on aa64, skip the patch (because the binary is x64 only)
-  if (process.arch === 'arm64' || process.arch === 'aarch64') {
-    logger.info('skipping callgate patch on arm64');
-    return;
-  }
   let patchedCount = 0;
 
   for (const pattern of GLOB_TARGETS) {

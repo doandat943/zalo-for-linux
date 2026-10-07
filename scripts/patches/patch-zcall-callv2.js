@@ -207,12 +207,6 @@ async function main() {
     return;
   }
 
-  // if we are on aa64, skip the patch (because the binary is x64 only)
-  if (process.arch === 'arm64' || process.arch === 'aarch64') {
-    logger.info('skipping call-v2 patch on arm64');
-    return;
-  }
-
   let content = fs.readFileSync(MAIN_JS, 'utf8');
   const originalContent = content;
   // Older bundles discarded the launcher's preload; retain it on re-patch.

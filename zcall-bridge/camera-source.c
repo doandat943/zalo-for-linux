@@ -408,7 +408,7 @@ static HRESULT WINAPI pin_connect(IPin *p, IPin *peer, const AM_MEDIA_TYPE *requ
             if (SUCCEEDED(IBaseFilter_QueryFilterInfo(info.pFilter,&filter))) {
                 char name[128]={0},line[256];
                 if(!WideCharToMultiByte(CP_UTF8,0,filter.achName,-1,name,sizeof(name),NULL,NULL))
-                    lstrcpyA(name,"unknown");
+                    lstrcpynA(name,"unknown",sizeof(name));
                 snprintf(line,sizeof(line),"camera-hook: RGB24 %lux%lu connected to %s\r\n",s->width,s->height,name);
                 trace_hook(line);
                 if(filter.pGraph)IFilterGraph_Release(filter.pGraph);
@@ -434,11 +434,11 @@ static HRESULT WINAPI pin_connected(IPin *p, IPin **out)
 static HRESULT WINAPI pin_media(IPin *p, AM_MEDIA_TYPE *out)
 { if(!out)return E_POINTER; if(!SOURCE(pin,p)->peer){memset(out,0,sizeof(*out));return VFW_E_NOT_CONNECTED;}return media_make(SOURCE(pin,p),out); }
 static HRESULT WINAPI pin_info(IPin *p, PIN_INFO *out)
-{ if(!out)return E_POINTER; memset(out,0,sizeof(*out)); out->pFilter=&SOURCE(pin,p)->filter;filter_addref(out->pFilter);out->dir=PINDIR_OUTPUT;lstrcpyW(out->achName,L"Capture");return S_OK; }
+{ if(!out)return E_POINTER; memset(out,0,sizeof(*out)); out->pFilter=&SOURCE(pin,p)->filter;filter_addref(out->pFilter);out->dir=PINDIR_OUTPUT;lstrcpynW(out->achName,L"Capture",128);return S_OK; }
 static HRESULT WINAPI pin_direction(IPin *p, PIN_DIRECTION *out)
 { (void)p;if(!out)return E_POINTER;*out=PINDIR_OUTPUT;return S_OK; }
 static HRESULT WINAPI pin_id(IPin *p, LPWSTR *out)
-{ (void)p;if(!out)return E_POINTER;*out=CoTaskMemAlloc(8*sizeof(WCHAR));if(!*out)return E_OUTOFMEMORY;lstrcpyW(*out,L"Capture");return S_OK; }
+{ (void)p;if(!out)return E_POINTER;*out=CoTaskMemAlloc(8*sizeof(WCHAR));if(!*out)return E_OUTOFMEMORY;lstrcpynW(*out,L"Capture",8);return S_OK; }
 static HRESULT WINAPI pin_types(IPin *p, IEnumMediaTypes **out) { return enum_new(SOURCE(pin,p),TRUE,0,(void **)out); }
 static HRESULT WINAPI pin_internal(IPin *p, IPin **pins, ULONG *count) { (void)p;(void)pins;(void)count;return E_NOTIMPL; }
 static HRESULT WINAPI pin_event(IPin *p) { (void)p;return S_OK; }
@@ -529,6 +529,6 @@ static HRESULT camera_source_create(IUnknown *outer, REFIID iid, void **out)
     s->bag.lpVtbl=&bag_vtable;s->properties.lpVtbl=&properties_vtable;
     s->refs=1;s->socket=INVALID_SOCKET;s->stop=CreateEventW(NULL,TRUE,FALSE,NULL);
     if(!s->stop){HeapFree(GetProcessHeap(),0,s);return E_FAIL;}
-    lstrcpyW(s->name,L"PipeWire camera");
+    lstrcpynW(s->name,L"PipeWire camera",128);
     result=source_query(s,iid,out);source_release(s);return result;
 }
