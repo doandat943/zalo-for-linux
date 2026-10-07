@@ -27,12 +27,6 @@ const TEMP_DIR = path.join(ROOT, 'temp');
 
 async function main() {
 
-  const currentArch = process.arch || os.arch();
-  if (currentArch === 'arm64' || currentArch === 'aarch64') {
-    logger.warn(`Skipping zcall-bridge setup: aarch64 is not supported for 32-bit Wine runtime.`);
-    return;
-  }
-
   // -------------------------------------------------------------------------
   // 1. plugins/capture from the Windows installer
   // -------------------------------------------------------------------------
@@ -120,7 +114,7 @@ async function main() {
       const cc = process.env.CC || 'gcc';
       const cflags = process.env.CFLAGS || '';
       const ldflags = process.env.LDFLAGS || '';
-      execSync(`${cc} -m64 ${cflags} -shared -fPIC -O2 "${proxySrc}" -ldl -lX11 -lxcb ${ldflags} -o "${proxySo}"`, {
+      execSync(`${cc} ${cflags} -shared -fPIC -O2 "${proxySrc}" -ldl -lX11 -lxcb ${ldflags} -o "${proxySo}"`, {
         cwd: ROOT, stdio: 'pipe'
       });
       logger.dim(`${path.basename(proxySo)} (64-bit) compiled from source`);

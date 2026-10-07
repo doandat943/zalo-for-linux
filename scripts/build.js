@@ -11,6 +11,9 @@ const TEMP_DIR = path.join(BASE_DIR, 'temp');
 let ZALO_VERSION = null;
 const builtFiles = [];
 
+// Check architecture
+const isArm64 = process.arch === 'arm64' || process.arch === 'aarch64';
+
 async function main() {
   try {
     // Read version from package.json.bak
@@ -32,29 +35,21 @@ async function main() {
     // silently bloat the standard variants — start clean; Phase 3 re-bundles.
     fs.rmSync(path.join(APP_DIR, 'native', 'wine-runtime'), { recursive: true, force: true });
 
-    // Check architecture for Full variants
-    const isArm64 = process.arch === 'arm64' || process.arch === 'aarch64';
-
     // Phase 1: Build original Zalo
     logger.step('PHASE 1: Building Zalo (Original)');
     await build('(Original)', '');
 
     // Phase 1.5: Full variant of the original (no ZaDark) — wine bundled.
-    // This is only built on x86_64, because zcall is not supported on aarch64.
-    if (!isArm64) {
-      logger.step('PHASE 1.5: Building Zalo (Full — wine bundled, no ZaDark)');
-      await bundleWineRuntime();
-      await build('(Full — wine bundled)', '-PlainFull');
-      // Remove the runtime again — the standard variants must not contain it,
-      // and a leftover from a previous run would silently bloat them (and the
-      // next Full build) to the Full size.
-      fs.rmSync(path.join(APP_DIR, 'native', 'wine-runtime'), { recursive: true, force: true });
-    } else {
-      logger.info('PHASE 1.5: Skipping Full variant build on aa64, zcall is not supported on this architecture');
-    }
+    logger.step('PHASE 2: Building Zalo (Full — wine bundled, no ZaDark)');
+    await bundleWineRuntime();
+    await build('(Full — wine bundled)', '-Full');
+    // Remove the runtime again — the standard variants must not contain it,
+    // and a leftover from a previous run would silently bloat them (and the
+    // next Full build) to the Full size.
+    fs.rmSync(path.join(APP_DIR, 'native', 'wine-runtime'), { recursive: true, force: true });
 
     // Phase 2: Apply ZaDark integration and build final product
-    logger.step('PHASE 2: Building Zalo (with ZaDark)');
+    logger.step('PHASE 3: Building Zalo (with ZaDark)');
 
     // Patch ZaDark directly into APP_DIR
     await integrateZaDark();
@@ -62,14 +57,10 @@ async function main() {
 
     // Phase 3: Full variant of the ZaDark build — wine bundled, so the call
     // feature works out of the box with no first-run download.
-    if (!isArm64) {
-      logger.step('PHASE 3: Building Zalo (Full — wine bundled, with ZaDark)');
-      await bundleWineRuntime();
-      await build('(Full — wine bundled)', '-Full');
-      fs.rmSync(path.join(APP_DIR, 'native', 'wine-runtime'), { recursive: true, force: true });
-    } else {
-      logger.info('PHASE 3: Skipping Full with ZaDark variant build on aa64');
-    }
+    logger.step('PHASE 4: Building Zalo (Full — wine bundled, with ZaDark)');
+    await bundleWineRuntime();
+    await build('(Full — wine bundled)', '-ZaDark-Full');
+    fs.rmSync(path.join(APP_DIR, 'native', 'wine-runtime'), { recursive: true, force: true });
 
     // Final summary
     logger.step('BUILD SUMMARY');
@@ -87,15 +78,11 @@ async function main() {
 }
 
 // Keep in sync with WINE_DOWNLOAD_URL in plugins/zcall-bridge/index.js
-const WINE_DOWNLOAD_URL =
+const WINE_DOWNLOAD_URL = (isArm64) ?
+  'https://github.com/DMKha241/hangover/releases/download/hangover-11.16/hangover_11.16_arm64.tar.xz' :
   'https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-amd64-wow64.tar.xz';
 
 async function bundleWineRuntime() {
-  // we will skip the wine bundle if on aarch64 because zcall is currently not supported on it
-  if (process.arch === 'arm64' || process.arch === 'aarch64') {
-    logger.info('skipping wine bundle on aa64, zcall is not supported on this architecture');
-    return;
-  }
 
   if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -181,7 +168,7 @@ async function build(buildName = '', outputSuffix = '') {
     let buildCommand;
     let zadarkVersion = null;
 
-    if (outputSuffix === '-ZaDark' || outputSuffix === '-Full') {
+    if (outputSuffix === '-ZaDark' || outputSuffix === '-Zadark-Full') {
       // Read ZaDark version for custom naming (the Full variant also builds
       // on the ZaDark-integrated app directory)
       const zadarkPackagePath = path.join(BASE_DIR, 'plugins', 'zadark', 'package.json');
@@ -196,12 +183,12 @@ async function build(buildName = '', outputSuffix = '') {
         }
       }
 
-      const variantSuffix = outputSuffix === '-Full' ? '-Full' : '';
+      const variantSuffix = outputSuffix === '-Zadark-Full' ? '-Full' : '';
       artifactName = `Zalo-${ZALO_VERSION}+ZaDark-${zadarkVersion}-${commitHash}${variantSuffix}${archSuffix}.AppImage`;
       buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
       buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
       logger.info(`Building ${buildName} with Zalo: ${ZALO_VERSION}, ZaDark: ${zadarkVersion}, Commit: ${commitHash}`);
-    } else if (outputSuffix === '-PlainFull') {
+    } else if (outputSuffix === '-Full') {
       artifactName = `Zalo-${ZALO_VERSION}-Original-${commitHash}-Full${archSuffix}.AppImage`;
       buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
       buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
@@ -215,7 +202,7 @@ async function build(buildName = '', outputSuffix = '') {
     // Write build-info.json to the app directory so the AppImage will contain its metadata
     const buildInfo = {
       version: ZALO_VERSION,
-      zadarkVersion: (outputSuffix === '-ZaDark' || outputSuffix === '-Full') ? zadarkVersion : null,
+      zadarkVersion: (outputSuffix === '-ZaDark' || outputSuffix === '-Zadark-Full') ? zadarkVersion : null,
       commit: commitHash,
       buildDate: new Date().toISOString()
     };
@@ -270,7 +257,7 @@ async function build(buildName = '', outputSuffix = '') {
         logger.dim(`SHA256: ${fileSha256}`);
         
         builtFiles.push({
-          type: outputSuffix === '-Full' ? '🍷 Full (ZaDark)' : outputSuffix === '-PlainFull' ? '🍷 Full' : outputSuffix === '-ZaDark' ? '🎨 ZaDark' : '📦 Original',
+          type: outputSuffix === '-Zadark-Full' ? '🍷 Full (ZaDark)' : outputSuffix === '-Full' ? '🍷 Full' : outputSuffix === '-ZaDark' ? '🎨 ZaDark' : '📦 Original',
           name: appImageName,
           sizeStr
         });
@@ -283,7 +270,7 @@ async function build(buildName = '', outputSuffix = '') {
 
     // Export build info to GitHub Actions
     if (process.env.GITHUB_OUTPUT) {
-      const prefix = outputSuffix === '-PlainFull' ? 'plainfull_' : outputSuffix === '-Full' ? 'full_' : outputSuffix === '-ZaDark' ? 'zadark_' : 'original_';
+      const prefix = outputSuffix === '-Full' ? 'full_' : outputSuffix === '-Zadark-Full' ? 'zadark_full_' : outputSuffix === '-ZaDark' ? 'zadark_' : 'original_';
 
       // Export build-specific info
       const specificOutputs = [

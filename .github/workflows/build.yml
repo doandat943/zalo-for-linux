@@ -55,12 +55,12 @@ jobs:
       build: ${{ steps.build.outputs.build }}
       original_appimage_name: ${{ steps.build.outputs.original_appimage_name }}
       original_appimage_file: ${{ steps.build.outputs.original_appimage_file }}
-      zadark_appimage_name: ${{ steps.build.outputs.zadark_appimage_name }}
-      zadark_appimage_file: ${{ steps.build.outputs.zadark_appimage_file }}
       full_appimage_name: ${{ steps.build.outputs.full_appimage_name }}
       full_appimage_file: ${{ steps.build.outputs.full_appimage_file }}
-      plainfull_appimage_name: ${{ steps.build.outputs.plainfull_appimage_name }}
-      plainfull_appimage_file: ${{ steps.build.outputs.plainfull_appimage_file }}
+      zadark_appimage_name: ${{ steps.build.outputs.zadark_appimage_name }}
+      zadark_appimage_file: ${{ steps.build.outputs.zadark_appimage_file }}
+      zadark_full_appimage_name: ${{ steps.build.outputs.zadark_full_appimage_name }}
+      zadark_full_appimage_file: ${{ steps.build.outputs.zadark_full_appimage_file }}
     strategy:
       fail-fast: false
       matrix:
@@ -68,14 +68,13 @@ jobs:
           - arch: x86_64
             runner: ubuntu-latest
             sys_deps: >
-              sudo dpkg --add-architecture i386 &&
               sudo apt update &&
-              sudo apt install -y build-essential liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc gcc-multilib g++ clang libclang-dev llvm libc6-dev-i386 libx11-dev libxcb1-dev libx11-dev:i386 libxcb1-dev:i386 libxext-dev:i386 zsync
+              sudo apt install -y build-essential liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc g++ clang libclang-dev llvm libc6-dev libx11-dev libxcb1-dev libxext-dev zsync
           - arch: aarch64
             runner: ubuntu-24.04-arm
             sys_deps: >
               sudo apt update &&
-              sudo apt install -y build-essential liblzma-dev p7zip-full gcc g++ clang libclang-dev llvm libc6-dev libx11-dev libxcb1-dev libxext-dev
+              sudo apt install -y build-essential liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc g++ clang libclang-dev llvm libc6-dev libx11-dev libxcb1-dev libxext-dev
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -151,19 +150,19 @@ jobs:
         retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
 
     - name: Upload Full AppImage artifact (wine bundled, ZaDark)
+      if: steps.build.outputs.build == 'true' && steps.build.outputs.zadark_full_appimage_file != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.build.outputs.zadark_full_appimage_name }}-${{ matrix.arch }}
+        path: ${{ steps.build.outputs.zadark_full_appimage_file }}*
+        retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
+
+    - name: Upload Full AppImage artifact (wine bundled, no ZaDark)
       if: steps.build.outputs.build == 'true' && steps.build.outputs.full_appimage_file != ''
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.build.outputs.full_appimage_name }}-${{ matrix.arch }}
         path: ${{ steps.build.outputs.full_appimage_file }}*
-        retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
-
-    - name: Upload Full AppImage artifact (wine bundled, no ZaDark)
-      if: steps.build.outputs.build == 'true' && steps.build.outputs.plainfull_appimage_file != ''
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.build.outputs.plainfull_appimage_name }}-${{ matrix.arch }}
-        path: ${{ steps.build.outputs.plainfull_appimage_file }}*
         retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
 
   release:
@@ -212,9 +211,9 @@ jobs:
           ./<downloaded-file>
           ```
 
-          > 🍷 **Full variants** (portable wine bundled inside — the call feature, voice/video/share screen, works right after the first launch with no download; larger files ~430MB):
-          > - `Zalo-<ver>+ZaDark-<zadark_ver>-<commit_hash>-Full-x86_64.AppImage` (with ZaDark)
-          > - `Zalo-<ver>-Original-<commit_hash>-Full-x86_64.AppImage` (without ZaDark)
+          > 🍷 **Full variants** (portable wine bundled inside — the call feature, voice/video/share screen, works right after the first launch with no download):
+          > - `Zalo-<ver>+ZaDark-<zadark_ver>-<commit_hash>-<arch>.AppImage` (with ZaDark)
+          > - `Zalo-<ver>-Original-<commit_hash>-Full-<arch>.AppImage` (without ZaDark)
 
           **NOTE: DO NOT download the files with `.AppImage.zsync`, they are only used for delta updates and cannot run directly.**
 

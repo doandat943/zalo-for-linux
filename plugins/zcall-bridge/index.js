@@ -54,8 +54,9 @@ process.env.WINEARCH = 'wow64';
 // 11.14 and new WoW64 11.17; wine 8.6 is lighter (54MB) but its
 // msvcp140/ucrtbase lack _Throw_C_error, which crashes ZaloCall when the
 // video pipeline hits an error (e.g. codec/format negotiation).
-const WINE_DOWNLOAD_URL =
-  'https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-amd64-wow64.tar.xz';
+const WINE_DOWNLOAD_URL = (process.arch === 'x64' ?
+  'https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-amd64-wow64.tar.xz'
+ :'https://github.com/DMKha241/hangover/releases/download/hangover-11.16/hangover_11.16_arm64.tar.xz');
 const RUNTIME_DIRNAME = 'zcall-wine-runtime';
 const CONFIG_FILENAME = 'zcall-config.json';
 // Last successful validateWine() (writeConfig replaces the whole config file,
@@ -989,6 +990,17 @@ function launch({ userDataDir }) {
 
   // Clean stale wine processes from unclean previous exits
   sweepStaleProcesses(prefix);
+
+  // win64 and wow64 share a prefix; only an explicit win32 marker requires removal.
+  for (const name of ['system.reg', 'user.reg', 'userdef.reg']) {
+    try {
+      const registry = path.join(prefix, name);
+      if (fs.existsSync(registry) && /^#arch=win32\r?$/m.test(fs.readFileSync(registry, 'utf8'))) {
+        fs.rmSync(prefix, { recursive: true, force: true });
+        break;
+      }
+    } catch (e) { /* ignore */}
+  }
 
   if (mode === 'lazy') {
     console.log('[zcall-bridge] call mode lazy — wine is prepared on the first call');
