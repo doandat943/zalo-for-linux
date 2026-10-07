@@ -15,7 +15,7 @@
  *      actually running a 32-bit exe (pipebridge --version).
  *   2. If no usable wine exists on first run, ASKS the user (always-on-top
  *      window with browse/download options) and downloads a portable wine
- *      (~96MB) into <userData>/zcall-wine-runtime/ with a progress window —
+ *      into <userData>/zcall-wine-runtime/ with a progress window —
  *      no root needed, works on any distro.
  *   3. Ensures the wine prefix exists (wineboot), exports
  *      ZCALL_WINE / ZCALL_WINEPREFIX / WINEDEBUG into process.env.
@@ -45,13 +45,17 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const https = require('https');
+const { startCameraBridge } = require('./camera');
 
-// Recommended build: 11.14 (96MB / ~850MB). Video calls verified working on
-// it; wine 8.6 is lighter (54MB) but its msvcp140/ucrtbase lack
-// _Throw_C_error, which crashes ZaloCall when the video pipeline hits an
-// error (e.g. codec/format negotiation).
+// The Windows helper stays PE32; Wine's Unix side and camera capture are 64-bit.
+process.env.WINEARCH = 'wow64';
+
+// Recommended build: 11.14 WoW64. Video calls were verified on classic
+// 11.14 and new WoW64 11.17; wine 8.6 is lighter (54MB) but its
+// msvcp140/ucrtbase lack _Throw_C_error, which crashes ZaloCall when the
+// video pipeline hits an error (e.g. codec/format negotiation).
 const WINE_DOWNLOAD_URL =
-  'https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-amd64.tar.xz';
+  'https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-amd64-wow64.tar.xz';
 const RUNTIME_DIRNAME = 'zcall-wine-runtime';
 const CONFIG_FILENAME = 'zcall-config.json';
 // Last successful validateWine() (writeConfig replaces the whole config file,
@@ -202,9 +206,8 @@ function validateWine(winePath, prefix) {
     debugLog('validate: pipebridge.exe not found (resourcesPath=' + (process.resourcesPath || '') + ')');
     return false;
   }
-  // Use a dedicated throwaway prefix: validating against the real prefix can
-  // trigger slow version upgrade/downgrade passes (10-30s+) or corrupt state,
-  // and a cold first run needs a generous timeout.
+  // Use the call engine's prefix for validation too, so the app maintains
+  // only one prefix. A cold first run needs a generous timeout.
   const valPrefix = prefix;
   try {
     const res = spawnSync(winePath, [pipebridgePath, '--version'], {
@@ -422,6 +425,7 @@ async function installDownloadedWine(userDataDir, onProgress) {
 // ---------------------------------------------------------------------------
 
 let askWindowOpen = false;
+let wineDownloadInProgress = false;
 
 /**
  * Custom always-on-top ask window (native dialogs can get covered by the
@@ -457,7 +461,7 @@ function showAskWindow(failedWine) {
     <header><h1>Tính năng gọi điện</h1></header>
     <main>
       <p class="lead">${headLine}<br>
-        Sẽ tải ~96MB về lưu trong dữ liệu của Zalo — không cần quyền quản trị,
+        Sẽ tải Wine WoW64 về lưu trong dữ liệu của Zalo — không cần quyền quản trị,
         không ảnh hưởng hệ thống.</p>
       <div id="url" title="Mở nguồn tải trong trình duyệt">Nguồn tải: ${downloadUrl}</div>
       <label class="check"><input type="checkbox" id="never"> Không hỏi lại lần sau nếu không tải</label>
@@ -512,7 +516,10 @@ function showAskWindow(failedWine) {
           type: 'error',
           title: 'Zalo — Tính năng gọi điện',
           message: 'Wine này không dùng được',
-          detail: 'File đã chọn không chạy được ứng dụng 32-bit hoặc không phải wine hợp lệ:\n' + chosen
+          detail: 'File đã chọn không chạy được chế độ WoW64 hoặc không phải wine hợp lệ:\n' + chosen,
+          buttons: ['Tải Wine', 'Đóng'], defaultId: 0, cancelId: 1
+        }).then(({ response }) => {
+          if (response === 0) finish({ download: true, neverAgain: false });
         });
       }
     };
@@ -548,7 +555,7 @@ function showProgressWindow() {
   </style></head><body>
     <header><h1>Tính năng gọi điện</h1></header>
     <main>
-      <p class="lead">Đang tải Wine (~96MB), vui lòng chờ…</p>
+      <p class="lead">Đang tải Wine WoW64, vui lòng chờ…</p>
       <div class="track"><div id="bar"></div></div>
       <div id="label">0%</div>
       <div id="url" title="Mở nguồn tải trong trình duyệt">${downloadUrl}</div>
@@ -575,15 +582,15 @@ function showProgressWindow() {
   };
 }
 
-async function promptAndInstall(userDataDir, failedWine) {
+async function promptAndInstall(userDataDir, failedWine, directDownload = false) {
   getElectronModules();
   if (!BrowserWindowModule) return null;
-  if (askWindowOpen) return null; // never show two ask windows
+  if (askWindowOpen || wineDownloadInProgress) return null; // never show two ask/download windows
   askWindowOpen = true;
 
   let result;
   try {
-    result = await showAskWindow(failedWine);
+    result = directDownload ? { download: true } : await showAskWindow(failedWine);
   } finally {
     askWindowOpen = false;
   }
@@ -605,6 +612,7 @@ async function promptAndInstall(userDataDir, failedWine) {
   }
 
   const progress = showProgressWindow();
+  wineDownloadInProgress = true;
   try {
     debugLog('install: starting download of portable wine');
     let lastUpdate = 0;
@@ -627,12 +635,11 @@ async function promptAndInstall(userDataDir, failedWine) {
     });
 
     // Verify the freshly downloaded wine actually works on this machine —
-    // classic wine builds need 32-bit libraries that some systems do not
-    // have.
+    // This verifies the PE32 helper under the selected WoW64 runtime.
     if (!validateWine(wine, prefix)) {
-      const hint = getI386InstallHint();
+      const hint = getWineInstallHint();
       throw new Error(
-        'Wine không chạy được trên máy này — cần thư viện 32-bit.\n\n' +
+        'Wine WoW64 không khởi động được trên máy này.\n\n' +
         hint.title + '\n' + hint.command
       );
     }
@@ -665,6 +672,8 @@ async function promptAndInstall(userDataDir, failedWine) {
       });
     }
     return null;
+  } finally {
+    wineDownloadInProgress = false;
   }
 }
 
@@ -767,14 +776,14 @@ async function findUsableWineAsync(userDataDir, prefix, onSlow) {
 function handleNoWine(userDataDir, { downloadedWine, failedWine }, onCall) {
   const cfg = readConfig(userDataDir);
 
-  // Downloaded runtime exists but cannot run (machine lacks 32-bit
-  // libraries): re-downloading would loop forever — guide the user
+  // Downloaded runtime exists but cannot start: re-downloading would loop
+  // forever — guide the user
   // instead, once, without nagging every launch.
   if (downloadedWine && failedWine === downloadedWine) {
-    console.error('[zcall-bridge] downloaded wine broken (missing 32-bit libs?)');
+    console.error('[zcall-bridge] downloaded WoW64 runtime failed validation');
     if (onCall || (cfg.wineSetup !== 'broken' && process.env.ZCALL_AUTO_SETUP !== '1')) {
       writeConfig(userDataDir, { wineSetup: 'broken' });
-      showBrokenWineDialog(downloadedWine);
+      showBrokenWineDialog(downloadedWine, userDataDir);
     }
     return;
   }
@@ -793,6 +802,8 @@ function handleNoWine(userDataDir, { downloadedWine, failedWine }, onCall) {
 }
 
 let wineActivated = false;
+let cameraBridge = null;
+let cameraReady = Promise.resolve();
 
 // Exports the environment the patched main-dist spawn code reads and starts
 // the screen-share watchers. Runs once per session.
@@ -802,6 +813,43 @@ function activateWine(wine, prefix) {
   if (!process.env.WINEDEBUG) process.env.WINEDEBUG = '-all';
   if (wineActivated) return;
   wineActivated = true;
+
+  cameraBridge = startCameraBridge({ log: message => debugLog('camera: ' + message) });
+  cameraReady = cameraBridge.ready.then(({ port, token, format }) => {
+    process.env.ZCALL_CAMERA_PORT = String(port);
+    process.env.ZCALL_CAMERA_TOKEN = token;
+    if (format) {
+      process.env.ZCALL_CAMERA_WIDTH = String(format.width);
+      process.env.ZCALL_CAMERA_HEIGHT = String(format.height);
+      process.env.ZCALL_CAMERA_FPS_NUM = String(format.num);
+      process.env.ZCALL_CAMERA_FPS_DEN = String(format.den);
+    } else {
+      for (const name of ['ZCALL_CAMERA_WIDTH', 'ZCALL_CAMERA_HEIGHT', 'ZCALL_CAMERA_FPS_NUM', 'ZCALL_CAMERA_FPS_DEN'])
+        delete process.env[name];
+    }
+    const hook = zcallBridgePath('camera-hook.dll');
+    if (fs.existsSync(hook)) {
+      const winePath = 'Z:' + hook.replace(/\//g, '\\');
+      const result = spawnSync(wine, ['regsvr32', '/s', winePath], {
+        env: { ...process.env, WINEPREFIX: prefix, WINEARCH: 'wow64' },
+        encoding: 'utf8', timeout: 15000
+      });
+      if (result.status === 0) {
+        process.env.ZCALL_CAMERA_HOOK_LOG = 'Z:' + path.join(os.homedir(), '.config', 'ZaloData', 'zcall-camera-hook.log').replace(/\//g, '\\');
+        console.log('[zcall-bridge] WoW64 camera COM hook registered');
+      } else {
+        throw new Error('camera COM hook registration failed: ' + (result.error || result.stderr || result.status));
+      }
+    } else {
+      throw new Error('camera-hook.dll missing; run setup-zcall-bridge.js');
+    }
+  });
+  cameraReady.catch(error => {
+    console.error('[zcall-bridge]', error.message);
+    wineActivated = false;
+    if (cameraBridge) cameraBridge.close();
+    cameraBridge = null;
+  });
 
   const runtimeDir = process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid ? process.getuid() : 1000}`;
   if (!process.env.PULSE_SERVER) {
@@ -854,7 +902,7 @@ function notify(body, onClick) {
 let preparing = null;
 
 function prepareOnCall(userDataDir, prefix) {
-  if (wineActivated) return Promise.resolve(process.env.ZCALL_WINE);
+  if (wineActivated) return cameraReady.then(() => process.env.ZCALL_WINE);
   if (!preparing) {
     preparing = findUsableWineAsync(userDataDir, prefix, () => {
       notify('Đang chuẩn bị tính năng gọi điện lần đầu, vui lòng chờ trong giây lát…');
@@ -862,7 +910,7 @@ function prepareOnCall(userDataDir, prefix) {
       preparing = null;
       if (found.wine) {
         activateWine(found.wine, prefix);
-        return found.wine;
+        return cameraReady.then(() => found.wine);
       }
       handleNoWine(userDataDir, found, true);
       throw new Error('no usable wine');
@@ -899,7 +947,7 @@ function installGate(mode, userDataDir, live) {
     const prefix = winePrefix(userDataDir);
     global.__zcallPrepare = () => prepareOnCall(userDataDir, prefix);
   } else {
-    delete global.__zcallPrepare;
+    global.__zcallPrepare = () => cameraReady;
   }
 }
 
@@ -925,6 +973,7 @@ function setCallMode(userDataDir, mode) {
 }
 
 function launch({ userDataDir }) {
+  process.env.WINEARCH = 'wow64';
   const firstRun = needsFirstRunChoice(userDataDir);
   const mode = firstRun ? 'lazy' : getCallMode(userDataDir);
   installGate(mode, userDataDir, false);
@@ -1071,50 +1120,32 @@ function watchCallState() {
 }
 
 /**
- * Distro-specific command to install the 32-bit libraries the portable wine
- * needs. Detects the distro from /etc/os-release.
+ * Guidance when the portable WoW64 runtime cannot start. The classic
+ * runtime's distro-specific 32-bit library instructions no longer apply.
  */
-function getI386InstallHint() {
-  let idLike = '';
-  try {
-    const osRelease = fs.readFileSync('/etc/os-release', 'utf8');
-    const m = osRelease.match(/^ID(?:_LIKE)?=(.+)$/gm);
-    idLike = (m || []).join('\n').toLowerCase();
-  } catch (e) { /* unknown distro */ }
-
-  if (idLike.includes('fedora') || idLike.includes('rhel') || idLike.includes('centos')) {
-    return {
-      title: 'Cài thư viện 32-bit (Fedora/RHEL):',
-      command: 'sudo dnf install -y glibc.i686 libX11.i686 libXext.i686 freetype.i686 mesa-libGL.i686 pulseaudio-libs.i686 alsa-lib.i686 libv4l.i686 zlib-ng-compat.i686 gstreamer1.i686 gstreamer1-plugins-base.i686 gstreamer1-plugins-good.i686 gstreamer1-plugins-bad-free.i686\n\n(GStreamer 32-bit cần cho video call; gstreamer1-plugin-libav cần RPM Fusion)\n\nHoặc cài wine hệ thống (tự kéo đủ thư viện):\nsudo dnf install wine'
-    };
-  }
-  if (idLike.includes('arch')) {
-    return {
-      title: 'Cài thư viện 32-bit (Arch):',
-      command: 'sudo pacman -S --needed lib32-glibc lib32-libx11 lib32-libxext lib32-freetype2 lib32-mesa lib32-libpulse lib32-alsa-lib lib32-libv4l lib32-zlib lib32-gstreamer lib32-gst-plugins-base lib32-gst-plugins-good lib32-gst-plugins-bad lib32-gst-libav\n\n(GStreamer 32-bit cần cho video call)\n\nHoặc cài wine hệ thống:\nsudo pacman -S wine'
-    };
-  }
-  // default: Debian/Ubuntu family
+function getWineInstallHint() {
   return {
-    title: 'Cài thư viện 32-bit (Ubuntu/Debian):',
-    command: 'sudo dpkg --add-architecture i386 && sudo apt update\nsudo apt install -y libc6:i386 libx11-6:i386 libfreetype6:i386 libgl1:i386 libpulse0:i386 libasound2:i386 libv4l-0:i386 zlib1g:i386 libgstreamer1.0-0:i386 libgstreamer-plugins-base1.0-0:i386 gstreamer1.0-plugins-good:i386 gstreamer1.0-plugins-bad:i386 gstreamer1.0-libav:i386\n\n(GStreamer 32-bit cần cho video call)\n\nHoặc cài wine hệ thống (tự kéo đủ thư viện):\nsudo apt install wine'
+    title: 'Cần Wine hỗ trợ WoW64.',
+    command: 'Mở Cài đặt gọi điện để tải lại Wine WoW64 hoặc chọn bản Wine hệ thống.'
   };
 }
 
-function showBrokenWineDialog(winePath) {
+function showBrokenWineDialog(winePath, userDataDir) {
   getElectronModules();
-  if (!dialogModule) return;
-  const hint = getI386InstallHint();
+  if (!dialogModule) return Promise.resolve(null);
+  const hint = getWineInstallHint();
   const parent = BrowserWindowModule.getFocusedWindow() || BrowserWindowModule.getAllWindows()[0];
-  dialogModule.showMessageBox(parent, {
+  return dialogModule.showMessageBox(parent, {
     type: 'warning',
     title: 'Zalo — Tính năng gọi điện',
-    message: 'Wine không chạy được trên máy này',
-    detail: 'Wine cần các thư viện 32-bit mà máy bạn chưa có.\n\n' +
-      hint.title + '\n' + hint.command +
-      '\n\nSau khi cài xong, khởi động lại Zalo là gọi được.\n\n' +
-      'Wine đã tải: ' + winePath
-  });
+    message: 'Wine này không hỗ trợ WoW64 hoặc không khởi động được',
+    detail: hint.title + '\n\nBấm Tải Wine để tải bản Wine tương thích trong cửa sổ tiến trình.\n\n' +
+      'Wine: ' + winePath,
+    buttons: ['Tải Wine', 'Đóng'], defaultId: 0, cancelId: 1
+  }).then(({ response }) => {
+    if (response === 0) return promptAndInstall(userDataDir, winePath, true);
+    return null;
+  }).catch(error => console.error('[zcall-bridge] wine download failed:', error.message));
 }
 
 // Shared look of the call windows (settings, first run, download ask and
@@ -1305,7 +1336,7 @@ function openSetupDialog({ userDataDir }) {
         </div>
         <div class="grid">
           <button class="btn" id="browse">Chọn file wine…</button>
-          <button class="btn" id="download">Tải wine về (~96MB)</button>
+          <button class="btn" id="download">Tải Wine WoW64</button>
           <button class="btn" id="clear">Bỏ lựa chọn đã lưu</button>
           <button class="btn danger" id="remove">Xóa wine đã tải</button>
         </div>
@@ -1400,7 +1431,7 @@ function openSetupDialog({ userDataDir }) {
           writeWineCheck(userDataDir, wine, prefix);
           reply(true, '✓ Wine chạy được ứng dụng 32-bit, sẵn sàng gọi điện.');
         } else {
-          const hint = getI386InstallHint();
+          const hint = getWineInstallHint();
           reply(false, '✗ Wine không chạy được ứng dụng 32-bit.\n' + hint.title + '\n' + hint.command.split('\n')[0] +
             (hint.command.includes('dpkg') ? '\n' + hint.command.split('\n')[1] : ''));
         }
@@ -1418,11 +1449,7 @@ function openSetupDialog({ userDataDir }) {
           pushStatus();
           new NotificationModule({ title: 'Zalo', body: 'Đã chọn wine: ' + chosen }).show();
         } else {
-          dialogModule.showMessageBox(win, {
-            type: 'error', title: 'Zalo — Tính năng gọi điện',
-            message: 'Wine này không dùng được',
-            detail: 'File đã chọn không chạy được ứng dụng 32-bit:\n' + chosen
-          });
+          showBrokenWineDialog(chosen, userDataDir).then(pushStatus);
         }
       });
       return;
@@ -1446,11 +1473,7 @@ function openSetupDialog({ userDataDir }) {
         return;
       }
       if (!validateWine(typed, prefix)) {
-        dialogModule.showMessageBox(win, {
-          type: 'error', title: 'Zalo — Tính năng gọi điện',
-          message: 'Wine này không dùng được',
-          detail: 'File không chạy được ứng dụng 32-bit hoặc không phải wine hợp lệ:\n' + typed
-        });
+        showBrokenWineDialog(typed, userDataDir).then(pushStatus);
         return;
       }
       writeConfig(userDataDir, { wineSetup: 'ready', winePath: typed });
@@ -1466,7 +1489,7 @@ function openSetupDialog({ userDataDir }) {
     }
     if (cmd === 'zcall-cfg-download') {
       win.destroy();
-      promptAndInstall(userDataDir);
+      promptAndInstall(userDataDir, null, true);
       return;
     }
     if (cmd === 'zcall-cfg-clear') {
@@ -1622,6 +1645,9 @@ function killWineSession(prefix) {
 }
 
 function shutdown() {
+  if (cameraBridge) cameraBridge.close();
+  cameraBridge = null;
+  wineActivated = false;
   const prefix = process.env.ZCALL_WINEPREFIX;
   if (!prefix) return;
   killWineSession(prefix);
@@ -1693,7 +1719,7 @@ function startScreenBridge() {
       dialogModule.showMessageBox({
         type: 'error', title: 'Zalo — Chia sẻ màn hình',
         message: 'Thiếu thành phần streamproxy',
-        detail: 'Không tìm thấy streamproxy.so tại:\n' + proxySoPath +
+        detail: 'Không tìm thấy ' + path.basename(proxySoPath) + ' tại:\n' + proxySoPath +
           '\n\nChạy "node scripts/setup-zcall-bridge.js" để build lại.'
       });
     }

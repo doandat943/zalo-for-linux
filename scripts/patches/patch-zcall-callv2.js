@@ -114,6 +114,7 @@ const REPLACEMENTS = [
   // 10. Wayland screen-share bridge: preload the streamproxy shim (when the
   //     plugin set ZCALL_PROXY_SO) so ZaloCall's screen-capture reads are
   //     served from the bridge display while the app itself stays native.
+  //     Preserve the launcher's preload alongside the screen-share shim.
   {
     from: '[e,"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv","\\\\\\\\.\\\\pipe\\\\PipeZCallSend"]))',
     to: '[e,"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv","\\\\\\\\.\\\\pipe\\\\PipeZCallSend"],{env:Object.assign({},process.env,{LD_PRELOAD:process.env.ZCALL_PROXY_SO||process.env.LD_PRELOAD||""})}))',
@@ -213,7 +214,13 @@ async function main() {
   }
 
   let content = fs.readFileSync(MAIN_JS, 'utf8');
-  let applied = 0;
+  const originalContent = content;
+  // Older bundles discarded the launcher's preload; retain it on re-patch.
+  content = content.replace(
+    'LD_PRELOAD:process.env.ZCALL_PROXY_SO||process.env.LD_PRELOAD||""',
+    'LD_PRELOAD:[process.env.ZCALL_PROXY_SO,process.env.LD_PRELOAD].filter(Boolean).join(":")'
+  );
+  let applied = Number(content !== originalContent);
   let missing = 0;
 
   for (const [index, { from, to, already }] of REPLACEMENTS.entries()) {

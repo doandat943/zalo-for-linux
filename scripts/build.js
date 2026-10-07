@@ -88,7 +88,7 @@ async function main() {
 
 // Keep in sync with WINE_DOWNLOAD_URL in plugins/zcall-bridge/index.js
 const WINE_DOWNLOAD_URL =
-  'https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-amd64.tar.xz';
+  'https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-amd64-wow64.tar.xz';
 
 async function bundleWineRuntime() {
   // we will skip the wine bundle if on aarch64 because zcall is currently not supported on it
@@ -107,13 +107,17 @@ async function bundleWineRuntime() {
     return;
   }
   const tarball = path.join(TEMP_DIR, 'wine-bundle.tar.xz');
+  const cacheSource = tarball + '.source';
+  const cached = fs.existsSync(tarball) && fs.existsSync(cacheSource) &&
+    fs.readFileSync(cacheSource, 'utf8').trim() === WINE_DOWNLOAD_URL;
   try {
-    if (!fs.existsSync(tarball)) {
+    if (!cached) {
       logger.info('Downloading portable wine for the Full variant...');
       try {
         execSync(`curl -L --fail -o "${tarball}" "${WINE_DOWNLOAD_URL}"`, {
           cwd: BASE_DIR, stdio: 'inherit'
         });
+        fs.writeFileSync(cacheSource, WINE_DOWNLOAD_URL + '\n');
       } catch(err) {
         // remove partial downloads
         if (fs.existsSync(tarball)) {

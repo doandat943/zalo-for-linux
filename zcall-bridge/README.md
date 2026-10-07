@@ -66,7 +66,7 @@ Người dùng **không cần cài gì thủ công**. Ngay lần mở app đầu
      (không bị che), kèm lý do cụ thể — nút **"Tải và bật ngay"** /
      **"Để sau"**, link nguồn tải minh bạch và checkbox
      **"Không hỏi lại lần sau nếu không tải"**
-2. Chọn tải → cửa sổ tiến trình *"Đang tải Wine (~54MB)…"* với % trực quan
+2. Chọn tải → cửa sổ tiến trình *"Đang tải Wine WoW64…"* với % trực quan
    → tự giải nén → tự khởi tạo prefix (mất ~1-2 phút tổng cộng)
 3. Xong → thông báo *"Tính năng gọi điện đã sẵn sàng!"* — gọi được ngay,
    không cần khởi động lại, không cần quyền quản trị
@@ -77,16 +77,19 @@ Người dùng **không cần cài gì thủ công**. Ngay lần mở app đầu
 Wine tải về được lưu tại `<userData>/zcall-wine-runtime/` — hoàn toàn trong
 dữ liệu của app, không đụng hệ thống, gỡ app là sạch.
 
+Popup báo Wine không hỗ trợ WoW64 hoặc không khởi động được có nút
+**"Tải Wine"**, mở thẳng cửa sổ tiến trình tải bản tương thích.
+
 ### Biến thể Full (wine đi kèm sẵn)
 
-Release có 2 biến thể **Full** (~430MB) cho cả 2 flavor: portable wine
+Release có 2 biến thể **Full** cho cả 2 flavor: portable wine
 được đóng gói sẵn **bên trong AppImage** (`app/native/wine-runtime/`):
 
 - `Zalo-<ver>-<hash>-Full.AppImage` — không ZaDark
 - `Zalo-<ver>+ZaDark-<zdv>-<hash>-Full.AppImage` — có ZaDark
 
 Mở app lần đầu là gọi được ngay — không cần mạng, không cần tải wine.
-Bản thường (~263MB) vẫn giữ luồng tự tải ở trên; tất cả chạy từ cùng
+Bản thường vẫn giữ luồng tự tải ở trên; tất cả chạy từ cùng
 một code, chỉ khác phần wine đi kèm.
 
 ## Chế độ gọi điện (không muốn chạy Wine?)
@@ -147,62 +150,80 @@ gọi** — và hộp thoại hỏi tải wine ở trên sẽ xuất hiện.
 | `ZCALL_AUTO_SETUP` | `'1'` = tải wine tự động, không hỏi (dùng khi triển khai hàng loạt/script) | — |
 | `ZCALL_WINE_DOWNLOAD_URL` | Ghi đè URL tải wine portable | URL kron4ek 11.14 trên GitHub |
 
+WoW64 là mặc định: prefix `<userData>/zcall-wine`, runtime tải về
+`wine-11.14-amd64-wow64.tar.xz`, shim màn hình 64 bit dưới tên `streamproxy.so`.
+
+`camera-hook.dll` PE32 thay class factory camera trong prefix Wine. Các DLL
+Zalo/Qt gốc được giữ nguyên. Hook trả camera source của bridge và không nạp
+`qcap.dll` để capture. GStreamer 64 bit dùng `pipewiresrc` nhận webcam,
+giải mã/đổi định dạng và chuyển khung BGR qua TCP loopback có token ngẫu
+nhiên cho DLL PE32. Source chỉ mở khi Qt chạy/preview camera và đóng khi
+filter dừng. Lỗi PipeWire được trả về.
+
+Bản hiện tại dùng camera PipeWire có ưu tiên cao nhất và lấy mode native có
+độ phân giải cao nhất, ưu tiên fps cao hơn ở cùng độ phân giải. Độ phân giải
+và fps được đọc từ `EnumFormat` của camera; pipeline không scale hay nhân fps.
+Qt vẫn dùng COM facade PE32 để nhận khung hình, còn truy cập thiết bị và xử lý
+pixel nằm ở tiến trình native.
+Log hook: `~/.config/ZaloData/zcall-camera-hook.log`.
+
 ## Cài thư viện cho từng distro (copy-paste)
 
-Bản wine tải tự động (kron4ek classic) dùng loader 32-bit nên **máy cần thư
-viện 32-bit**. Có 2 mức:
+Bản wine tải tự động dùng WoW64 với thư viện Linux **64-bit**;
+ZaloCall và DLL hook vẫn là PE32. Có 2 mức:
 
 - **Tối thiểu (gọi thoại — loa + mic)**: base libs + driver âm thanh
-- **Đầy đủ (thoại + video)**: thêm GStreamer + libv4l
+- **Đầy đủ (thoại + video)**: thêm GStreamer + PipeWire
 
-App cũng tự hiện dialog hướng dẫn đúng distro khi thiếu.
+App cũng tự hiện dialog hướng dẫn chọn Wine khi runtime không khởi động được.
 
 ### Ubuntu / Debian
 
 ```bash
-sudo dpkg --add-architecture i386 && sudo apt update
+sudo apt update
 
 # Tối thiểu — gọi thoại
-sudo apt install -y libc6:i386 libx11-6:i386 libxext6:i386 libfreetype6:i386 \
-  libgl1:i386 libpulse0:i386 libasound2:i386 zlib1g:i386
+sudo apt install -y libc6 libx11-6 libxext6 libfreetype6 \
+  libgl1 libpulse0 libasound2 zlib1g
 
 # Đầy đủ — thêm cho video call
-sudo apt install -y libgstreamer1.0-0:i386 libgstreamer-plugins-base1.0-0:i386 \
-  gstreamer1.0-plugins-good:i386 libv4l-0:i386
+sudo apt install -y libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+  gstreamer1.0-plugins-good gstreamer1.0-tools \
+  gstreamer1.0-pipewire pipewire-bin
 
 # Khuyến nghị — decode H.264 video từ đầu bên kia
-sudo apt install -y gstreamer1.0-libav:i386
+sudo apt install -y gstreamer1.0-libav
 ```
 
 ### Fedora / RHEL
 
 ```bash
 # Tối thiểu — gọi thoại
-sudo dnf install -y glibc.i686 libX11.i686 libXext.i686 freetype.i686 \
-  mesa-libGL.i686 pulseaudio-libs.i686 alsa-lib.i686 zlib-ng-compat.i686
+sudo dnf install -y glibc libX11 libXext freetype \
+  mesa-libGL pulseaudio-libs alsa-lib zlib-ng-compat
 
 # Đầy đủ — thêm cho video call
-sudo dnf install -y gstreamer1.i686 gstreamer1-plugins-base.i686 \
-  gstreamer1-plugins-good.i686 libv4l.i686
+sudo dnf install -y gstreamer1 gstreamer1-plugins-base \
+  gstreamer1-plugins-good pipewire-gstreamer pipewire-utils
 
 # Khuyến nghị — decode H.264 (cần RPM Fusion)
 sudo dnf install https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm
-sudo dnf install gstreamer1-plugin-libav.i686
+sudo dnf install gstreamer1-plugin-libav
 ```
 
 ### Arch
 
 ```bash
 # Tối thiểu — gọi thoại
-sudo pacman -S --needed lib32-glibc lib32-libx11 lib32-libxext \
-  lib32-freetype2 lib32-mesa lib32-libpulse lib32-alsa-lib lib32-zlib
+sudo pacman -S --needed glibc libx11 libxext \
+  freetype2 mesa libpulse alsa-lib zlib
 
 # Đầy đủ — thêm cho video call
-sudo pacman -S --needed lib32-gstreamer lib32-gst-plugins-base \
-  lib32-gst-plugins-good lib32-libv4l
+sudo pacman -S --needed gstreamer gst-plugins-base \
+  gst-plugins-good pipewire wireplumber gst-plugin-pipewire
 
 # Khuyến nghị — decode H.264
-sudo pacman -S --needed lib32-gst-libav
+sudo pacman -S --needed gst-libav
 ```
 
 > `gstreamer1.0-plugins-bad` (Ubuntu) / `gstreamer1-plugins-bad-free` (Fedora)
@@ -226,14 +247,9 @@ ls /dev/video*          # rỗng = chưa nhận phần cứng; thiếu quyền: 
 
 ### Camera bị xanh/nhòe (lệch định dạng pixel)
 
-Cài công cụ điều khiển camera (`sudo apt install v4l-utils` /
-`sudo dnf install v4l-utils` / `sudo pacman -S v4l-utils`) rồi ép format:
-
-```bash
-v4l2-ctl --set-fmt-video=width=640,height=480,pixelformat=MJPG
-```
-
-(hết hiệu lực khi rút cắm camera)
+Bridge PipeWire thực hiện đổi định dạng trong tiến trình native. Kiểm tra
+`gst-inspect-1.0 pipewiresrc`, `videoconvert` và `videoflip`, rồi xem
+`zcall-camera-hook.log` cùng các dòng `camera:` trong `zcall-debug.log`.
 
 ### Share screen trên Wayland (bridge)
 
@@ -273,7 +289,7 @@ Trên **phiên X11**, share screen hoạt động trực tiếp — không cần
 
 ### Lưu ý giới hạn
 
-- Bản kron4ek **wow64** (thuần 64-bit) không chạy được ZaloCall — không dùng.
+- Bản kron4ek **amd64-wow64** là runtime mặc định; ZaloCall vẫn là PE32.
 - Công cụ xwaylandvideobridge của KDE chỉ chạy trên KDE Plasma (KWin); trên
   GNOME dùng bridge tích hợp của app (mục trên).
 
@@ -316,9 +332,10 @@ Exec=env ZCALL_WINE=/usr/bin/wine /đường/dẫn/tới/Zalo.AppImage
 /đường/dẫn/wine --version          # in ra phiên bản, ví dụ wine-11.14
 
 # 2. Chạy được app 32-bit? (tạo prefix thử — lần đầu mất ~30s)
-WINEPREFIX=/tmp/test-prefix /đường/dẫn/wine wineboot -u
-ls /tmp/test-prefix/drive_c        # có Program Files/ = OK
-rm -rf /tmp/test-prefix
+test_dir=$(mktemp -d)
+WINEARCH=wow64 WINEPREFIX="$test_dir/prefix" /đường/dẫn/wine wineboot -u
+ls "$test_dir/prefix/drive_c"        # có Program Files/ = OK
+rm -rf "$test_dir"
 
 # 3. Mở app với env, gọi thử một cuộc thoại. Lần gọi đầu tiên hơi chậm
 #    (wine khởi động nguội + tạo prefix nếu chưa có ~5-15s).
@@ -338,15 +355,15 @@ rm -rf /tmp/test-prefix
 ## Đã xác minh
 
 - ✅ ZaloCall.exe chạy dưới Wine (wow64), kết nối đủ 2 kênh. Các bản đã test
-  thật qua replay (init → makeCall → incall → success → sendSignal):
-  **11.14** (96MB/852MB — bản khuyên dùng, video call đã xác minh thật),
+  trước đây qua replay (init → makeCall → incall → success → sendSignal):
+  **11.14 classic** (96MB/852MB — video call đã xác minh thật),
   **8.6** (54MB/565MB — nhẹ hơn nhưng video call crash `msvcp140._Throw_C_error`
   thiếu hàm CRT khi gặp lỗi decode), **8.0.1**, **7.22**
-- ✅ **Video call hoạt động** trên Fedora (wine 11.14 + GStreamer 32-bit +
+- ✅ Trước đây **video call hoạt động** trên Fedora (wine 11.14 classic + GStreamer 32-bit +
   libv4l) — camera đôi khi cần ép format: `v4l2-ctl --set-fmt-video=width=640,height=480,pixelformat=MJPG`
 - ✅ **Share screen trên Wayland** qua bridge tích hợp (XDG ScreenCast
   portal → PipeWire → GStreamer → Xvfb headless `:99` → streamproxy shim
-  32-bit → ZaloCall) — **người dùng xác nhận share hoạt động** trên KDE
+  64-bit → ZaloCall) — **người dùng xác nhận share hoạt động** trên KDE
   Wayland; ZaloCall chạy native, giao diện cuộc gọi không đổi; hộp thoại
   quyền tự hiện khi bấm Share screen (shim báo hiệu qua file request)
 - ⚠️ Trên phiên X11 không cần bridge — share screen hoạt động trực tiếp.
@@ -357,5 +374,8 @@ rm -rf /tmp/test-prefix
 - ✅ Thư mục engine đã tỉa 196MB → **67MB** (bỏ pdbs, translations, Qt plugins
   thừa, opengl32sw, Qt5Sql/Xml; giữ ZaviMeet cho group call) — call 1-1 vẫn chạy
 - ✅ Tắt app → wine session được dọn sạch (wineserver + winedevice)
-- ⚠️ Chưa test: video call end-to-end (máy test không có webcam) — signaling
-  video đã chạy, cần máy có camera để xác nhận capture + hiển thị
+- ✅ Camera preview có hình và gọi video không crash trên Wine staging 11.17
+  WoW64 + PipeWire 64 bit.
+- ✅ Bài thử PE32 nhận ít nhất 3 khung webcam thật qua COM SampleGrabber,
+  kiểm tra capabilities/frame-rate list và xác nhận không nạp `qcap.dll`.
+- ⚠️ Chưa test: Camera portal trong Flatpak và camera thứ hai.

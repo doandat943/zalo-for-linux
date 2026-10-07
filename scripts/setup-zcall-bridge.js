@@ -91,11 +91,24 @@ async function main() {
     logger.warn('pipebridge.exe missing — build it with: i686-w64-mingw32-gcc zcall-bridge/pipebridge.c -lws2_32 -O2 -o zcall-bridge/pipebridge.exe');
   }
 
+  // PE32 COM entry point for the WoW64 camera hook. Wine registers this in
+  // its own prefix; no Zalo or Qt DLL is modified.
+  const cameraHookSrc = path.join(ROOT, 'zcall-bridge', 'camera-hook.c');
+  const cameraHookDll = path.join(ROOT, 'zcall-bridge', 'camera-hook.dll');
+  try {
+    execSync(`i686-w64-mingw32-gcc -shared -static-libgcc -O2 -Wall -Wextra -Werror "${cameraHookSrc}" -lole32 -loleaut32 -lstrmiids -luuid -lws2_32 -Wl,--kill-at -o "${cameraHookDll}"`, {
+      cwd: ROOT, stdio: 'pipe'
+    });
+    logger.dim('camera-hook.dll (PE32) compiled from source');
+  } catch (e) {
+    throw new Error('Could not build the WoW64 camera hook: ' + String(e.stderr || e.message).trim().slice(-300));
+  }
+
   // -------------------------------------------------------------------------
   // 3. streamproxy.so (LD_PRELOAD shim that redirects ZaloCall's
-  //    screen-capture reads to the bridge display). MUST be 32-bit: ZaloCall
-  //    is a 32-bit app, so its winex11 driver binds the 32-bit libX11 —
-  //    a 64-bit shim would never intercept anything.
+  //    screen-capture reads to the bridge display). MUST be 64-bit: the
+  //    default WoW64 Unix process binds the 64-bit libX11, even though
+  //    ZaloCall is a 32-bit PE app — a 32-bit shim would not intercept it.
   // -------------------------------------------------------------------------
   const proxySrc = path.join(ROOT, 'zcall-bridge', 'streamproxy.c');
   const proxySo = path.join(ROOT, 'zcall-bridge', 'streamproxy.so');
@@ -107,14 +120,13 @@ async function main() {
       const cc = process.env.CC || 'gcc';
       const cflags = process.env.CFLAGS || '';
       const ldflags = process.env.LDFLAGS || '';
-      execSync(`${cc} -m32 ${cflags} -shared -fPIC -O2 "${proxySrc}" -ldl -lX11 -lxcb ${ldflags} -o "${proxySo}"`, {
+      execSync(`${cc} -m64 ${cflags} -shared -fPIC -O2 "${proxySrc}" -ldl -lX11 -lxcb ${ldflags} -o "${proxySo}"`, {
         cwd: ROOT, stdio: 'pipe'
       });
-      logger.dim('streamproxy.so (32-bit) compiled from source');
+      logger.dim(`${path.basename(proxySo)} (64-bit) compiled from source`);
     } catch (e) {
       throw new Error(
-        '32-bit build toolchain is required for streamproxy.so — ' +
-        'install with: sudo apt install gcc-multilib libc6-dev-i386 libx11-dev:i386 libxcb1-dev:i386 libxext-dev:i386' +
+        '64-bit X11 development libraries are required for streamproxy.so — install with: sudo apt install libx11-dev libxcb1-dev' +
         ' (gcc said: ' + String(e.stderr || e.message).trim().slice(-300) + ')'
       );
     }

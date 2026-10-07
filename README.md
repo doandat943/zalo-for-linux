@@ -88,13 +88,17 @@ Prerequisites:
 - Node.js and npm
 - 7z (p7zip-full) for extracting the macOS app during setup
 - C++ build tools (for native addons): `build-essential`, `libssl-dev`, `liblzma-dev`
-- `zcall` build tools: `gcc-mingw-w64-i686` `gcc-multilib` `libc6-dev-i386` `libx11-dev` `libxcb1-dev` `libx11-dev:i386` `libxcb1-dev:i386` `libxext-dev:i386`
+- `zcall` build tools: `gcc-mingw-w64-i686` `gcc` `libx11-dev` `libxcb1-dev`
+
+Calls use WoW64 by default. The PE32 bridge and camera DLL use MinGW;
+Linux capture and the screen proxy use 64-bit libraries. Camera capture
+requires PipeWire and native GStreamer with the `pipewiresrc` plugin.
 
 On Debian/Ubuntu:
 
 ```bash
-sudo dpkg --add-architecture i386
-sudo apt update && sudo apt install -y liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc gcc-multilib libc6-dev-i386 libx11-dev libxcb1-dev libx11-dev:i386 libxcb1-dev:i386 libxext-dev:i386 zsync
+sudo apt update && sudo apt install -y liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc libx11-dev libxcb1-dev zsync
+sudo apt install -y pipewire-bin gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 ```
 
 Steps:

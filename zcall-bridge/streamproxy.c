@@ -16,8 +16,8 @@
  * and starts the bridge (popping the compositor's permission dialog), so
  * the user never has to prepare the bridge manually.
  *
- * Build (32-bit — ZaloCall is 32-bit, a 64-bit shim never intercepts):
- *   gcc -m32 -shared -fPIC -O2 streamproxy.c -ldl -lX11 -lxcb -o streamproxy.so
+ * Build (64-bit — WoW64's Unix process is 64-bit; ZaloCall remains PE32):
+ *   gcc -m64 -shared -fPIC -O2 streamproxy.c -ldl -lX11 -lxcb -o streamproxy.so
  * Debug: set ZCALL_PROXY_LOG=<file> to trace which API the app uses.
  */
 #define _GNU_SOURCE
