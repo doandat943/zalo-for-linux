@@ -10,7 +10,7 @@ Thanks **realdtn2** for the solution: [realdtn2/zalo-linux-2026](https://github.
 
 ## ⚠️ Important: Known Issues
 
-- **✅ Calls run natively:** voice and video calls, screen sharing and group calls (audio, camera, screen share) run on a native Linux call engine ([`zcall-native/`](./zcall-native/README.md), from [zalo-linux-native](https://github.com/nct88/zalo-linux-native)): no Wine, no `ZaloCall.exe`, no 32-bit libraries. Calls need `python3`, libopus and the PulseAudio tools (Debian / Ubuntu: `sudo apt install python3 libopus0 pulseaudio-utils`); the first call says what is missing. The Wine bridge of [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) (thanks @collyn) is replaced.
+- **✅ Calls run natively:** voice and video calls, screen sharing and group calls (audio, camera, screen share) run on a native Linux call engine ([`zcall-native/`](./zcall-native/README.md), from [zalo-linux-native](https://github.com/nct88/zalo-linux-native)), in a call window laid out as Zalo for macOS with its own icons and sounds (taken from the macOS DMG at build time), and incoming calls show a notice in the screen's corner: no Wine, no `ZaloCall.exe`, no 32-bit libraries. Calls need `python3`, libopus and the PulseAudio tools (Debian / Ubuntu: `sudo apt install python3 libopus0 pulseaudio-utils`); the first call says what is missing. Switching a voice call to video during the call is not possible, as with Zalo for macOS and Windows (phone to phone only). The Wine bridge of [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) (thanks @collyn) is replaced.
 
 > 💡 **For the full list of resolved issues, workarounds, and community credits, see [KNOWN_ISSUES.md](./KNOWN_ISSUES.md).**
 

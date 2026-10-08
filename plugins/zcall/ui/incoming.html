@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src file: https: data:; font-src file:; media-src file:">
+<title>Zalo: cuộc gọi đến</title>
+<link rel="stylesheet" href="incoming.css">
+</head>
+<body>
+  <button id="close" title="Đóng"><img data-a="close" alt=""></button>
+  <div id="avatar"></div>
+  <div id="name"></div>
+  <div id="sub"></div>
+  <div id="buttons">
+    <button id="reject" title="Từ chối"><img data-a="end" alt=""></button>
+    <button id="accept" title="Trả lời"><img id="acceptIcon" data-a="acceptAudio" alt=""></button>
+  </div>
+  <button id="noCam" class="hide"><img data-a="camOff" alt=""><span>Trả lời không mở camera</span></button>
+  <script src="assets.js"></script>
+  <script src="incoming.js"></script>
+</body>
+</html>

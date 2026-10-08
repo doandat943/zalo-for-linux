@@ -10,7 +10,7 @@ Cảm ơn **realdtn2** đã đưa ra giải pháp: [realdtn2/zalo-linux-2026](ht
 
 ## ⚠️ Lưu ý quan trọng: Các lỗi đã biết
 
-- **✅ Gọi điện chạy native:** gọi thoại, gọi video, chia sẻ màn hình và gọi nhóm (âm thanh, camera, chia sẻ màn hình) chạy bằng engine gọi điện native cho Linux ([`zcall-native/`](../zcall-native/README.md), từ [zalo-linux-native](https://github.com/nct88/zalo-linux-native)): không Wine, không `ZaloCall.exe`, không thư viện 32-bit. Cần `python3`, libopus và bộ công cụ PulseAudio (Debian / Ubuntu: `sudo apt install python3 libopus0 pulseaudio-utils`); lần gọi đầu sẽ báo nếu thiếu gói. Thay cho Wine bridge của [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) (cảm ơn @collyn).
+- **✅ Gọi điện chạy native:** gọi thoại, gọi video, chia sẻ màn hình và gọi nhóm (âm thanh, camera, chia sẻ màn hình) chạy bằng engine gọi điện native cho Linux ([`zcall-native/`](../zcall-native/README.md), từ [zalo-linux-native](https://github.com/nct88/zalo-linux-native)), với cửa sổ gọi theo bố cục Zalo macOS, dùng biểu tượng và âm thanh gốc (lấy từ DMG macOS lúc build), cuộc gọi đến hiện khung báo ở góc màn hình: không Wine, không `ZaloCall.exe`, không thư viện 32-bit. Cần `python3`, libopus và bộ công cụ PulseAudio (Debian / Ubuntu: `sudo apt install python3 libopus0 pulseaudio-utils`); lần gọi đầu sẽ báo nếu thiếu gói. Không chuyển được từ gọi thoại sang video giữa cuộc gọi, giống Zalo macOS và Windows (chỉ điện thoại với điện thoại). Thay cho Wine bridge của [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) (cảm ơn @collyn).
 
 > 💡 **Danh sách đầy đủ các lỗi đã sửa, cách khắc phục tạm thời và ghi nhận đóng góp của cộng đồng nằm trong [KNOWN_ISSUES.vi.md](./KNOWN_ISSUES.vi.md).**
 

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src file: https: data: blob:; font-src file:; media-src file:">
+<title>Zalo Call</title>
+<link rel="stylesheet" href="call.css">
+</head>
+<body>
+  <div id="main">
+    <div id="bg"></div>
+    <canvas id="video"></canvas>
+    <div id="stage"></div>
+    <div id="pip"><canvas id="self"></canvas><span class="label">Bạn</span></div>
+    <div id="center"><div class="avatar" id="avatar"></div><div id="status"></div></div>
+    <div id="timer"></div>
+    <div id="peerName" class="label"></div>
+    <div class="notes">
+      <span class="note hide" id="peerCam">Đã tắt camera</span>
+      <span class="note hide" id="peerMic">Đã tắt micro</span>
+      <span class="note hide" id="peerShare">Đang chia sẻ màn hình</span>
+    </div>
+    <button id="compactBtn" class="hide" title="Thu gọn">Thu gọn</button>
+  </div>
+
+  <div id="bar">
+    <button id="screen" class="tool" title="Chia sẻ màn hình"><img id="screenIcon" data-a="share" alt=""></button>
+    <div class="mid">
+      <div class="pill" id="camPill">
+        <button id="cam" title="Tắt camera"><img id="camIcon" data-a="cam" alt=""></button>
+        <button class="caret" id="camCaret" data-kind="camera" title="Chọn camera"><img data-a="caret" alt=""></button>
+      </div>
+      <button id="end" title="Kết thúc"><img data-a="end" alt=""></button>
+      <div class="pill" id="micPill">
+        <button id="mute" title="Tắt micro"><img id="micIcon" data-a="mic" alt=""></button>
+        <button class="caret" id="micCaret" data-kind="mic" title="Chọn micro và loa"><img data-a="caret" alt=""></button>
+      </div>
+    </div>
+    <button id="layout" class="tool" title="Đổi bố cục"><img data-a="grid" alt=""></button>
+    <button id="settings" class="tool" title="Thiết bị"><img data-a="setting" alt=""></button>
+  </div>
+
+  <div id="menu"></div>
+
+  <script src="assets.js"></script>
+  <script src="call.js"></script>
+</body>
+</html>

@@ -43,7 +43,7 @@ zalo-for-linux/
 │   ├── userscripts # Trình quản lý userscript
 │   ├── window-state # Kiểm tra trạng thái cửa sổ để tránh cửa sổ bị biến mất
 │   ├── zadark # Tiện ích mở rộng cho chế độ tối, tính năng riêng tư và các chức năng bổ sung
-│   └── zcall # Cửa sổ gọi và trình khởi động của engine gọi điện native
+│   └── zcall # Trình khởi động engine, cửa sổ gọi (window.js + ui/call.*) và khung báo cuộc gọi đến (incoming.js + ui/incoming.*), theo bố cục Zalo macOS
 ├── README.md # Thông tin về dự án
 ├── sample # Hình ảnh dùng cho hướng dẫn
 ├── scripts

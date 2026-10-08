@@ -1,0 +1,151 @@
+/*
+ * plugins/zcall/ui/call.css: the call window.
+ *
+ * Sizes (CSS px = pt) are measured from screenshots of Zalo's macOS call
+ * window (26.10.10, 1280x800 points, 1 pt = 1.5625 px in the captures):
+ * voice 450x672, video and group 640x400, bottom bar 50, end call 40,
+ * camera / micro pills 80x40 at 20 from it, avatar 125 (ringing) / 160
+ * (connected), self view 170x96, group tiles 16:9 with 5 between them.
+ * Colours and fonts from ZaloCall's own style sheets.
+ */
+
+:root {
+  --bar-h: 50px;
+  --bar-bg: #0c0c0c;
+  --pill-bg: #1d1d1d;
+  --pill-border: #3a3a3a;
+  --timer: rgb(66, 213, 140);
+  --label-bg: rgba(0, 0, 0, 0.75);
+  --menu-text: #081c36;
+  --menu-muted: #72808e;
+  --menu-line: #e4e4e4;
+  --menu-hover: #f1f3f5;
+  --accent: #0068ff;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  font: 14px/1.4 "Zalo Segoe UI", "Segoe UI", Roboto, "Noto Sans", Cantarell, Ubuntu, sans-serif;
+  user-select: none;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
+button:disabled { cursor: default; }
+img { display: block; pointer-events: none; -webkit-user-drag: none; }
+.hide { display: none !important; }
+
+/* --- the picture area above the bar --- */
+#main { position: absolute; left: 0; top: 0; right: 0; bottom: var(--bar-h); overflow: hidden; background: #000; }
+
+/* Voice: the avatar blurred and darkened behind everything. */
+#bg { position: absolute; inset: -60px; background: center / cover no-repeat; filter: blur(42px) brightness(0.32); }
+body.has-video #bg, body.has-tiles #bg { display: none; }
+
+#video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; display: none; }
+body.has-video:not(.has-tiles) #video { display: block; }
+
+#center { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; }
+/* Voice, ringing: avatar 125 centred 328 below the top of the content (672). */
+#center { top: 265px; }
+.avatar {
+  width: 125px; height: 125px; border-radius: 50%; position: relative;
+  background: #2a2a2a center / cover no-repeat;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 48px; font-weight: 600; color: #cfd3d8;
+}
+/* Ringing: a grey translucent ring of 6. */
+.avatar::after { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 0 6px rgba(150, 150, 150, 0.55); }
+/* Text centred 10 below the avatar (400.6 for a ringing voice call). */
+#status { margin-top: 0; min-height: 20px; font-size: 16px; line-height: 20px; text-align: center; padding: 0 16px; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Voice, connected: avatar 160 with a white 2 ring, centred 312 below the top. */
+body.phase-connected:not(.is-video) #center { top: 232px; }
+body.phase-connected:not(.is-video) .avatar { width: 160px; height: 160px; font-size: 60px; }
+body.phase-connected:not(.is-video) .avatar::after { box-shadow: inset 0 0 0 2px #fff; }
+body.phase-connected #status:empty { display: none; }
+/* Video before the picture: avatar 84 centred 106 below the top, its text centred at 171. */
+body.is-video #center { top: 64px; }
+body.is-video .avatar { width: 84px; height: 84px; font-size: 32px; }
+body.is-video #status { margin-top: 13px; }
+body.has-video #center, body.has-tiles #center { display: none; }
+
+/* Timer: green, top left (voice: digits 18 from the left, 12 from the top, 9 high; video: a 70x33 black box in the corner). */
+#timer { position: absolute; left: 17px; top: 8px; color: var(--timer); font-weight: 600; font-size: 13px; line-height: 18px;
+  font-variant-numeric: tabular-nums; z-index: 3; }
+#timer:empty { display: none; }
+body.is-video #timer { left: 0; top: 0; width: 70px; height: 33px; line-height: 33px; text-align: center; background: rgba(0, 0, 0, 0.85); }
+
+/* Name labels: bottom left of the picture and of each tile. */
+.label { position: absolute; left: 0; bottom: 0; height: 34px; line-height: 34px; padding: 0 9px; max-width: 100%;
+  background: var(--label-bg); color: #fff; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; z-index: 2; }
+.label:empty { display: none; }
+#peerName { display: none; }
+body.has-video:not(.has-tiles) #peerName { display: block; }
+
+/* Our camera: 170x96 in the top right corner (1-1). */
+#pip { position: absolute; top: 0; right: 0; width: 170px; height: 96px; background: #000; z-index: 2; display: none; overflow: hidden; }
+body.has-self:not(.has-tiles) #pip { display: block; }
+#pip canvas, .tile canvas { width: 100%; height: 100%; display: block; object-fit: cover; background: #000; }
+#pip .label { height: 24px; line-height: 24px; font-size: 14px; background: none; text-shadow: 0 1px 3px #000; }
+
+/* 1-1 split layout (the grid button): the peer and us side by side. */
+body.split.has-video:not(.has-tiles) #video { width: 50%; }
+body.split.has-self:not(.has-tiles) #pip { top: 0; right: 0; width: 50%; height: 100%; }
+body.split #pip canvas { object-fit: contain; }
+body.split #pip .label { height: 34px; line-height: 34px; font-size: 16px; background: var(--label-bg); text-shadow: none; }
+body.split.has-video #peerName { max-width: 50%; }
+
+/* Group: 16:9 tiles, 5 apart, centred (sizes set by call.js). */
+#stage { position: absolute; inset: 0; display: none; flex-wrap: wrap; align-content: center; justify-content: center; gap: 5px; }
+body.has-tiles #stage { display: flex; }
+.tile { position: relative; background: #000; overflow: hidden; }
+
+/* Peer state chips, top centre. */
+.notes { position: absolute; top: 10px; left: 80px; right: 80px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; z-index: 3; pointer-events: none; }
+.note { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: rgba(0, 0, 0, 0.7); font-size: 13px; }
+
+/* Expand / compact (screen sharing). */
+#compactBtn { position: absolute; top: 6px; right: 6px; z-index: 4; height: 26px; padding: 0 10px; border-radius: 13px; background: rgba(0, 0, 0, 0.7); font-size: 13px; }
+
+/* --- the bottom bar --- */
+#bar { position: absolute; left: 0; right: 0; bottom: 0; height: var(--bar-h); background: var(--bar-bg); }
+#bar .mid { position: absolute; left: 50%; top: 5px; transform: translateX(-50%); display: flex; gap: 20px; align-items: center; }
+.pill { display: flex; width: 80px; height: 40px; border-radius: 20px; background: var(--pill-bg); box-shadow: inset 0 0 0 1px var(--pill-border); }
+.pill > button { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 20px; }
+.pill > button > img { width: 44px; height: 44px; }
+.pill > .caret > img { width: 38px; height: 38px; }
+.pill > .caret.open { background: rgba(255, 255, 255, 0.28); }
+#end { width: 40px; height: 40px; border-radius: 50%; }
+#end img { width: 40px; height: 40px; }
+#end:hover img, .pill > button:not(:disabled):hover { filter: brightness(1.15); }
+.tool { position: absolute; top: 5px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+.tool img { width: 40px; height: 40px; }
+.tool:hover { background: rgba(255, 255, 255, 0.08); }
+#screen { left: 5px; }
+#settings { right: 5px; }
+#layout { right: 50px; }
+#screen, #layout { display: none; }
+body.is-video.phase-connected #screen { display: flex; }
+body.is-video.phase-connected.has-video:not(.has-tiles) #layout { display: flex; }
+
+/* --- device menu: white, rows of 30, above the bar --- */
+#menu {
+  position: absolute; bottom: calc(var(--bar-h) + 20px); width: 310px; max-height: calc(100% - var(--bar-h) - 40px); overflow: auto;
+  background: #fff; color: var(--menu-text); border-radius: 6px; padding: 10px 0; z-index: 10; display: none;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); font-size: 15px;
+}
+#menu.show { display: block; }
+#menu .h, #menu .it { position: relative; height: 30px; line-height: 30px; padding: 0 16px 0 45px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#menu .h { color: var(--menu-muted); cursor: default; }
+#menu .h img { position: absolute; left: 16px; top: 5px; width: 20px; height: 20px; opacity: 0.6; }
+#menu .it { cursor: pointer; }
+#menu .it:hover { background: var(--menu-hover); }
+#menu .it img { position: absolute; left: 18px; top: 8px; width: 14px; height: 14px; }
+#menu .sep { height: 1px; margin: 4px 0; background: var(--menu-line); }
+
+/* --- compact: a small tile with the picture, end call and expand --- */
+body.compact #pip, body.compact .notes, body.compact #menu, body.compact .tool, body.compact #camPill, body.compact #peerName { display: none !important; }
+body.compact #bar .mid { gap: 12px; }

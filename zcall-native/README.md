@@ -10,9 +10,10 @@ captures), then export again.
 
 - 1-1 voice and video calls, making and answering (answer / decline / either
   side hangs up); P2P with a phone on the same network, relay otherwise
-- call window (plugins/zcall): camera both ways, mute, speaker off,
-  microphone / speaker / camera picker, the peer's camera and mic state,
-  minimize / compact
+- call window (plugins/zcall, laid out as Zalo for macOS with its own icons
+  and sounds): camera both ways, mute, microphone / speaker / camera picker,
+  the peer's camera and mic state, compact; incoming call notice with
+  "answer without camera"
 - sharing the screen in 1-1 video calls (PipeWire portal on Wayland)
 - WebRTC echo cancellation, noise suppression and gain control (PipeWire)
 - group calls (on by default, `ZCALL_GROUP=0` turns them off): audio, our
