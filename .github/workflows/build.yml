@@ -165,8 +165,10 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ needs.build.outputs.zalo_version }}
-        name: ${{ needs.build.outputs.zalo_version }}
+        # Own tag, so a native release never lands in (and never cleans up) the
+        # release of the Wine builds tagged with the bare Zalo version.
+        tag_name: native-${{ needs.build.outputs.zalo_version }}
+        name: Zalo Linux Native ${{ needs.build.outputs.zalo_version }}
         body: |
           ## 🚀 How to use
 
@@ -188,6 +190,8 @@ jobs:
 
           > 📞 **Calls** (voice, video, screen sharing, group calls) run on a native Linux engine inside every AppImage: no Wine, no download. They need `python3`, libopus and the PulseAudio tools (Debian / Ubuntu: `sudo apt install python3 libopus0 pulseaudio-utils`); the first call says what is missing.
 
+          > 🔤 **OCR (text recognition in images) is not included**: its models and key ship only with Zalo's Windows installer, which this build does not use.
+
           **NOTE: DO NOT download the files with `.AppImage.zsync`, they are only used for delta updates and cannot run directly.**
 
           ## 📋 System Requirements
@@ -204,7 +208,7 @@ jobs:
     - name: Cleanup old release assets
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        RELEASE_TAG: ${{ needs.build.outputs.zalo_version }}
+        RELEASE_TAG: native-${{ needs.build.outputs.zalo_version }}
         CURRENT_COMMIT: ${{ env.COMMIT_HASH }}
       run: |
         set -euo pipefail
@@ -219,7 +223,7 @@ jobs:
         fi
 
         for name in $asset_names; do
-          if [[ "$name" == Zalo-*.AppImage* ]] && [[ "$name" != *"$CURRENT_COMMIT"* ]]; then
+          if [[ "$name" == Zalo-Linux-Native-*.AppImage* ]] && [[ "$name" != *"$CURRENT_COMMIT"* ]]; then
             echo "Removing old asset: $name"
             gh release delete-asset "$RELEASE_TAG" "$name" --yes
           fi

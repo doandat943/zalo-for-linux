@@ -88,13 +88,13 @@ Prerequisites:
 - Node.js and npm
 - 7z (p7zip-full) for extracting the macOS app during setup
 - C++ build tools (for native addons): `build-essential`, `libssl-dev`, `liblzma-dev`
-- `zcall` build tools: `gcc-mingw-w64-i686` `gcc-multilib` `libc6-dev-i386` `libx11-dev` `libxcb1-dev` `libx11-dev:i386` `libxcb1-dev:i386` `libxext-dev:i386`
+- Rust toolchain, `clang`, `libclang-dev`, `llvm` (for the Rust native addons)
+- To make calls with the built app: `python3`, `libopus0`, `pulseaudio-utils` (nothing to compile, no Wine)
 
 On Debian/Ubuntu:
 
 ```bash
-sudo dpkg --add-architecture i386
-sudo apt update && sudo apt install -y liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc gcc-multilib libc6-dev-i386 libx11-dev libxcb1-dev libx11-dev:i386 libxcb1-dev:i386 libxext-dev:i386 zsync
+sudo apt update && sudo apt install -y build-essential liblzma-dev p7zip-full gcc g++ clang libclang-dev llvm libx11-dev libxcb1-dev libxext-dev zsync
 ```
 
 Steps:

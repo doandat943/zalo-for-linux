@@ -134,7 +134,7 @@ async function getExistingCombinations() {
 
           releases.forEach(release => {
             release.assets.forEach(asset => {
-              const match = asset.name.match(/^Zalo-([0-9.]+)\+ZaDark-([0-9.]+)-([0-9a-fA-F]{7,})(?:-[A-Za-z0-9_-]+)?\.AppImage$/);
+              const match = asset.name.match(/^Zalo-(?:Linux-Native-)?([0-9.]+)\+ZaDark-([0-9.]+)-([0-9a-fA-F]{7,})(?:-[A-Za-z0-9_-]+)?\.AppImage$/);
               if (match) {
                 const zaloVer = match[1];
                 const zadarkVer = match[2];
