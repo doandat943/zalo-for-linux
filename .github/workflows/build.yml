@@ -79,7 +79,7 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
       run: |
         apt-get update
-        apt-get install -y git curl wget ca-certificates xz-utils python3 patchelf build-essential libssl-dev liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc g++ clang libclang-dev llvm libc6-dev libx11-dev libxcb1-dev libxext-dev zsync
+        apt-get install -y git curl wget ca-certificates xz-utils python3 patchelf build-essential libssl-dev liblzma-dev zlib1g-dev p7zip-full gcc-mingw-w64-i686 gcc g++ clang libclang-dev llvm libc6-dev libx11-dev libxcb1-dev libxext-dev zsync
 
     - name: Checkout repository
       uses: actions/checkout@v4
