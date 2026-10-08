@@ -43,7 +43,7 @@ fi
 echo "Extracting AppImage..."
 chmod +x "${DIST_DIR}/${OUTNAME}"
 cd "$DIST_DIR"
-./"$OUTNAME" --appimage-extract >/dev/null 2>&1
+./"$OUTNAME" --appimage-extract >/dev/null
 
 if [[ ! -d "$APPDIR" ]]; then
   echo "Error: Cannot find ${APPDIR}, extraction failed." >&2
