@@ -50,6 +50,10 @@ jobs:
   build:
     name: Build (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    container: ubuntu:22.04
+    defaults:
+      run:
+        shell: bash
     outputs:
       zalo_version: ${{ steps.build.outputs.zalo_version }}
       build: ${{ steps.build.outputs.build }}
@@ -67,15 +71,16 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-latest
-            sys_deps: >
-              sudo apt update &&
-              sudo apt install -y build-essential liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc g++ clang libclang-dev llvm libc6-dev libx11-dev libxcb1-dev libxext-dev zsync
           - arch: aarch64
             runner: ubuntu-24.04-arm
-            sys_deps: >
-              sudo apt update &&
-              sudo apt install -y build-essential liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc g++ clang libclang-dev llvm libc6-dev libx11-dev libxcb1-dev libxext-dev
     steps:
+    - name: Install system build dependencies (${{ matrix.arch }})
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        apt-get update
+        apt-get install -y git curl wget ca-certificates xz-utils python3 patchelf build-essential libssl-dev liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc g++ clang libclang-dev llvm libc6-dev libx11-dev libxcb1-dev libxext-dev zsync
+
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
@@ -91,7 +96,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
 
     - name: Cache Electron binaries
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/electron
         key: ${{ runner.os }}-${{ matrix.arch }}-electron-${{ hashFiles('package-lock.json') }}
@@ -99,7 +104,7 @@ jobs:
           ${{ runner.os }}-${{ matrix.arch }}-electron-
 
     - name: Cache build downloads
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: temp
         key: ${{ runner.os }}-${{ matrix.arch }}-zalo-temp-${{ hashFiles('package-lock.json') }}
@@ -107,21 +112,18 @@ jobs:
           ${{ runner.os }}-${{ matrix.arch }}-zalo-temp-
 
     - name: Cache Cargo registry and build artifacts
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
           nativelibs/*/target
-        key: ${{ runner.os }}-${{ matrix.arch }}-cargo-${{ hashFiles('nativelibs/*/Cargo.lock') }}
+        key: ${{ runner.os }}-ubuntu22.04-${{ matrix.arch }}-cargo-${{ hashFiles('nativelibs/*/Cargo.lock') }}
         restore-keys: |
-          ${{ runner.os }}-${{ matrix.arch }}-cargo-
+          ${{ runner.os }}-ubuntu22.04-${{ matrix.arch }}-cargo-
 
     - name: Install Node.js dependencies
-      run: npm ci --prefer-offline --no-audit
-
-    - name: Install system build dependencies (${{ matrix.arch }})
-      run: ${{ matrix.sys_deps }}
+      run: npm ci --prefer-offline --no-audit --build-from-source=sqlite3 --napi_build_version=6
 
     - name: Setup and Build
       id: build
@@ -219,7 +221,7 @@ jobs:
 
           ## 📋 System Requirements
           - Linux x64 or aa64
-          - GLIBC 2.28 or later
+          - GLIBC 2.35 or later
 
           ## 🐛 Issues & Support
           Please report issues in the [GitHub Issues](https://github.com/${{ github.repository }}/issues) section.

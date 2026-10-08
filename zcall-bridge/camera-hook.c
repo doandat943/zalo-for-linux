@@ -1,6 +1,9 @@
 /* COM interception point for Wine's VFW camera filter in PE32 ZaloCall.
  * The original Zalo/Qt DLLs and Wine's qcap.dll stay untouched.
  */
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
 #define COBJMACROS
 #include <winsock2.h>
 #include <windows.h>
