@@ -50,9 +50,9 @@ class ElectronCallUi {
   }
 
   // noAnswer: only a dismiss button (a call we cannot take).
-  incoming({ title, text, avatar, video = false, noAnswer = false }, onAccept, onReject) {
+  incoming({ title, text, avatar, video = false, noAnswer = false, inviter = '' }, onAccept, onReject) {
     this.incomingCb = { onAccept, onReject };
-    this._state({ phase: 'incoming', name: title, avatar, text, since: 0, video, muted: false, speakerOff: false, noAnswer });
+    this._state({ phase: 'incoming', name: title, avatar, text, since: 0, video, muted: false, speakerOff: false, noAnswer, inviter });
     if (this.fallback) this._fallbackIncoming();
   }
 

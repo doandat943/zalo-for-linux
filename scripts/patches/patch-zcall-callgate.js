@@ -43,13 +43,6 @@ const PATCHED = 'let ae=()=>{{const e=$znode.os.release();if(e){if("linux"!==$zn
 const DEFAULTS_ORIGINAL = 'enableCall:!1,enableTag:!0,enableVideoCall:!1';
 const DEFAULTS_PATCHED = 'enableCall:!0,enableTag:!0,enableVideoCall:!0';
 
-// Renderer getOSCode() returns 8 for Linux (navigator.platform). Mobile Zalo
-// then refuses voice→video upgrade ("phiên bản Linux không hỗ trợ…").
-// Native main.js already maps LINUX→23 (macOS). Advertise Windows (7) here
-// so the phone treats this client as a desktop that can do video.
-const OSCODE_LINUX_8 = 'if(navigator.platform.indexOf("Linux")>=0)return 8';
-const OSCODE_LINUX_7 = 'if(navigator.platform.indexOf("Linux")>=0)return 7';
-
 async function main() {
   const missing = [];
   let patchedCount = 0;
@@ -83,10 +76,6 @@ async function main() {
     }
     if (content.includes(DEFAULTS_ORIGINAL)) {
       content = content.split(DEFAULTS_ORIGINAL).join(DEFAULTS_PATCHED);
-      changed = true;
-    }
-    if (content.includes(OSCODE_LINUX_8)) {
-      content = content.split(OSCODE_LINUX_8).join(OSCODE_LINUX_7);
       changed = true;
     }
 

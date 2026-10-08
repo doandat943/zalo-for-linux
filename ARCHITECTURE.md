@@ -43,7 +43,7 @@ zalo-for-linux/
 │   ├── userscripts # Userscripts manager
 │   ├── window-state # Check the window state for avoid disappearing window
 │   ├── zadark # Dark mode, privacy features, and additional functionality extension
-│   └── zcall # Call window and engine launcher of the native call engine
+│   └── zcall # Engine launcher, call window (window.js + ui/call.*) and incoming notice (incoming.js + ui/incoming.*), laid out as Zalo for macOS
 ├── README.md # Contains info about the project
 ├── sample # Pictures for guide
 ├── scripts

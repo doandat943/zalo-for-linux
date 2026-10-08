@@ -101,8 +101,9 @@ async function extractDMG() {
       throw new Error('7z is required for DMG extraction.');
     }
 
-    logger.info(`Extracting app.asar from ${selectedFile.name}...`);
-    const extractCommand = `7z x "${dmgPath}" "Zalo*/Zalo.app/Contents/Resources/app.asar*"`;
+    logger.info(`Extracting app.asar and the call helper from ${selectedFile.name}...`);
+    // ZaloCall (macOS): only for its icons and sounds (scripts/extract-zcall-assets.js).
+    const extractCommand = `7z x "${dmgPath}" "Zalo*/Zalo.app/Contents/Resources/app.asar*" "Zalo*/Zalo.app/Contents/ZaloHelper.app/Contents/MacOS/ZaloCall"`;
 
     try {
       execSync(extractCommand, { cwd: TEMP_DIR, stdio: 'pipe' });
@@ -224,6 +225,9 @@ async function extractAppAsar() {
 
   const { main: patchflatpakFileTransfer } = require('./patches/patch-flatpak-file-transfer');
   await patchflatpakFileTransfer();
+
+  // The call window's icons, sounds and fonts, from the macOS app.
+  await require('./extract-zcall-assets').main();
 
   // Without it Zalo would look for ZaloCall.exe / ZaloHelper.app: no calls at all.
   const mainJs = path.join(APP_DIR, 'main-dist', 'main.js');

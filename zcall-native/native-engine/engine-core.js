@@ -359,7 +359,7 @@ class EngineCore {
     this.emit({ type: 'update', command: 'callState', data: { state: 'incall' } });
     this.emit({ type: 'request', command: 'getAliasName', data: { noisedId: c.peerId } });
     this.emit({ type: 'sendSignal', command: 407, data: { callId: c.callId, callerId: c.peerId } });
-    const kind = c.type === 3 ? 'Cuộc gọi video đến (chỉ có tiếng)' : 'Cuộc gọi thoại đến';
+    const kind = c.type === 3 ? 'Cuộc gọi video đến' : 'Cuộc gọi thoại đến';
     this.ui.incoming({ title: c.peerName || 'Zalo', text: kind, avatar: c.avatar, video: c.type === 3 },
       () => this.answer(), (why) => this.reject(why));
   }
@@ -662,7 +662,7 @@ class EngineCore {
     this._finish(c.state === 'connected' ? 50 : 103);
   }
 
-  // ---- Group calls (incoming, audio only; docs/GROUP-CALL.md) ----
+  // ---- Group calls: someone else's (incoming) ----
   // Signals as ZCallGroupInfo / ZMessageSerializer build them (macOS ZaloCall
   // 26.9.10): every one carries callId and hostCall, the rest in a JsonCpp
   // string `data`, which is what Zalo's JS destructures.
@@ -894,7 +894,7 @@ class EngineCore {
     this.emit({ type: 'update', command: 'callState', data: { state: 'incall' } });
     this.emit({ type: 'sendSignal', command: 12439, data: { callId: c.callId, data: jsonCpp({ callType: 1, extraData: '', status: 1 }), hostCall: c.hostCall, session: c.sessId, status: 1 } });
     const host = (c.members.get(c.hostCall) || {}).name || d.Dname || 'Ai đó';
-    this.ui.incoming({ title: c.title, text: `${host} đang gọi nhóm`, avatar: c.avatar, video: true },
+    this.ui.incoming({ title: c.title, text: `${host} mời bạn vào cuộc gọi nhóm`, inviter: host, avatar: c.avatar, video: true },
       () => this._groupAnswer(), (why) => this._groupReject(why));
   }
 
