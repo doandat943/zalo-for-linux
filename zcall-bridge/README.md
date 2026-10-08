@@ -100,8 +100,8 @@ Khay hệ thống → **Cài đặt gọi điện…** → **Chế độ gọi �
 | Chế độ | Khi mở app | Khi bấm gọi |
 |---|---|---|
 | **Chuẩn bị sẵn** (`auto`, mặc định) | dò + kiểm tra wine, tạo prefix | gọi ngay |
-| **Chỉ chuẩn bị khi bấm gọi** (`lazy`) | không chạy wine | dò + kiểm tra wine ở nền (không đơ app), cuộc gọi đầu chậm hơn; lần sau trong phiên thì nhanh như `auto` |
-| **Tắt** (`off`) | không chạy wine | không khởi động wine, hiện thông báo hướng dẫn bật lại |
+| **Chỉ chuẩn bị khi bấm gọi** (`lazy`) | không chạy wine | dò + kiểm tra wine ở nền (không khởi động wine, không đơ app), chuẩn bị Wine/camera khi cần gọi; kết thúc cuộc gọi thì dừng toàn bộ Wine và bridge, cuộc gọi sau tự khởi động lại |
+| **Tắt** (`off`) | không chạy wine | hiện thông báo hướng dẫn bật lại cho gọi đi và thao tác cục bộ; chặn im lặng tín hiệu gọi đến |
 
 Phù hợp cho ai chỉ dùng Zalo để nhắn tin/xem tin nhắn cũ mà máy đã có wine
 (bản Full hoặc wine hệ thống) (#80). `ZCALL_DISABLE=1` tương đương chế độ `off`.
@@ -161,7 +161,7 @@ nhiên cho DLL PE32. Source chỉ mở khi Qt chạy/preview camera và đóng k
 filter dừng. Lỗi PipeWire được trả về.
 
 Bản hiện tại dùng camera PipeWire có ưu tiên cao nhất và lấy mode native có
-độ phân giải cao nhất, ưu tiên fps cao hơn ở cùng độ phân giải. Độ phân giải
+độ phân giải cao hơn gần nhất hoặc bằng 720p nếu camera support từ 720p trờ lên, thấp hơn sẽ lấy cao nhất, ưu tiên fps cao hơn ở cùng độ phân giải. Độ phân giải
 và fps được đọc từ `EnumFormat` của camera; pipeline không scale hay nhân fps.
 Qt vẫn dùng COM facade PE32 để nhận khung hình, còn truy cập thiết bị và xử lý
 pixel nằm ở tiến trình native.
@@ -372,10 +372,11 @@ rm -rf "$test_dir"
 - ✅ **Người dùng xác nhận cuộc gọi thoại hoạt động** trong app
 - ✅ pipebridge C (252KB) hoạt động trong app thật
 - ✅ Thư mục engine đã tỉa 196MB → **67MB** (bỏ pdbs, translations, Qt plugins
-  thừa, opengl32sw, Qt5Sql/Xml; giữ ZaviMeet cho group call) — call 1-1 vẫn chạy
+  thừa, opengl32sw, Qt5Sql/Xml) — call 1-1 vẫn chạy
 - ✅ Tắt app → wine session được dọn sạch (wineserver + winedevice)
 - ✅ Camera preview có hình và gọi video không crash trên Wine staging 11.17
   WoW64 + PipeWire 64 bit.
 - ✅ Bài thử PE32 nhận ít nhất 3 khung webcam thật qua COM SampleGrabber,
   kiểm tra capabilities/frame-rate list và xác nhận không nạp `qcap.dll`.
-- ⚠️ Chưa test: Camera portal trong Flatpak và camera thứ hai.
+- ✅ Đã thử trường hợp nhiều camera qua PipeWire.
+- ⚠️ Chưa test: Camera portal trong Flatpak.

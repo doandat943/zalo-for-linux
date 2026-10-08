@@ -93,10 +93,30 @@
     render();
   };
 
+  window.__zcallCameraRefresh = function () {
+    const label = document.querySelector('.setting [data-translate-inner="STR_VIDEO_CALL_SETTINGS"]');
+    const calls = label && label.closest('.setting-menu__item');
+    if (!calls || !calls.classList.contains('selected')) return;
+    const settings = calls.closest('.setting');
+    const general = Array.from(settings.querySelectorAll('.setting-menu__item')).find(function (item) {
+      return item !== calls && !item.id;
+    });
+    if (!general) return;
+    // remount this tab to reuse Zalo's device query; use its refresh API if one is exposed.
+    general.click();
+    setTimeout(function () {
+      if (settings.isConnected && general.classList.contains('selected')) calls.click();
+    }, 0);
+  };
+
   addSwitch();
   addMenuItem();
+  let settingsOpen = !!document.getElementById('setting');
   let queued = false;
   new MutationObserver(function () {
+    const open = !!document.getElementById('setting');
+    if (settingsOpen && !open) send('settings-closed');
+    settingsOpen = open;
     if (queued) return;
     if (document.getElementById('zcall-switch-panel') &&
         (document.getElementById('zcall-setting-item') || !document.querySelector('#setting .setting-menu'))) return;

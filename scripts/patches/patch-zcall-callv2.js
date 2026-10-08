@@ -118,6 +118,7 @@ const REPLACEMENTS = [
   {
     from: '[e,"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv","\\\\\\\\.\\\\pipe\\\\PipeZCallSend"]))',
     to: '[e,"\\\\\\\\.\\\\pipe\\\\PipeZCallRecv","\\\\\\\\.\\\\pipe\\\\PipeZCallSend"],{env:Object.assign({},process.env,{LD_PRELOAD:process.env.ZCALL_PROXY_SO||process.env.LD_PRELOAD||""})}))',
+    already: 'LD_PRELOAD:[process.env.ZCALL_PROXY_SO,process.env.LD_PRELOAD].filter(Boolean).join(":")',
   },
   {
     from: /e\.on\("data",\(([$\w]+)=>\{Y\(\1\)\}\)\),e\.on\("end"/,
@@ -172,7 +173,7 @@ const REPLACEMENTS = [
   {
     from: /\}\(\);([$\w]+)\(e,([$\w]+)\)\.then\(\(t=>\{if\(([$\w]+)&&!t\)return L=!1/,
     to: '}();("linux"===process.platform&&global.__zcallPrepare?global.__zcallPrepare().then((()=>$1(e,$2))):$1(e,$2)).then((t=>{if($3&&!t)return L=!1',
-    already: 'global.__zcallPrepare().then(',
+    already: /global\.__zcallPrepare\([^)]*\)\.then\(/,
   },
   // 14. The server flag call.launch_native_in_startup makes the renderer
   //     send the "init" message non-optional, which starts the helper at
@@ -183,6 +184,22 @@ const REPLACEMENTS = [
   {
     from: '.on("call-send-to-native",((e,t)=>{t._optional?delete t._optional:K()',
     to: '.on("call-send-to-native",((e,t)=>{if(global.__zcallDeferStartup&&t&&!t._optional&&"init"===t.command)return;t._optional?delete t._optional:K()',
+    already: 'if(global.__zcallDeferStartup&&t&&!t._optional&&"init"===t.command)return;',
+  },
+  // 15. Pass the triggering message to the mode gate so remote signals can
+  //     be blocked silently while local actions retain the settings reminder.
+  { from: 'function K(){if(L)', to: 'function K(ZCALL_MESSAGE){if(L)' },
+  { from: 'global.__zcallPrepare().then(', to: 'global.__zcallPrepare(ZCALL_MESSAGE).then(' },
+  { from: 't._optional?delete t._optional:K(),t&&"makeCall"', to: 't._optional?delete t._optional:K(t),t&&"makeCall"' },
+  // Turning calls off kills pipebridge too. The next call must recreate
+  // both processes and discard frames queued for the previous session.
+  {
+    from: 'function K(ZCALL_MESSAGE){if(L)',
+    to: 'global.__zcallResetTransport=()=>{L=!1,BB=!1,M=!1,TK=null,P=[],x=[],H()};function K(ZCALL_MESSAGE){if(L)',
+  },
+  {
+    from: '.on("call-send-to-native",((e,t)=>{if(global.__zcallDeferStartup',
+    to: '.on("call-send-to-native",((e,t)=>{if(global.__zcallShouldSend&&!global.__zcallShouldSend(t))return;if(global.__zcallDeferStartup',
   },
 ];
 

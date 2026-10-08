@@ -17,11 +17,16 @@ struct camera_source {
     IKsPropertySet properties;
     LONG refs;
     DWORD width, height, frame_bytes, fps_num, fps_den, bit_rate;
+    LONG camera_index; /* -1 is the default source for direct COM creation. */
     REFERENCE_TIME interval;
     volatile FILTER_STATE state;
     IFilterGraph *graph; /* graph owns the filter, so this is a weak reference */
     WCHAR name[128];
     IReferenceClock *clock;
+    CRITICAL_SECTION timing_lock;
+    REFERENCE_TIME run_start;
+    LARGE_INTEGER run_counter, counter_frequency;
+    LONG run_generation;
     IPin *peer;
     IMemInputPin *input;
     IMemAllocator *allocator;
@@ -59,10 +64,8 @@ static BOOL format_number(const char *name, DWORD *out)
 static HRESULT source_format(struct camera_source *source)
 {
     ULONGLONG bytes,interval,bit_rate;
-    if(!format_number("ZCALL_CAMERA_WIDTH",&source->width) ||
-       !format_number("ZCALL_CAMERA_HEIGHT",&source->height) ||
-       !format_number("ZCALL_CAMERA_FPS_NUM",&source->fps_num) ||
-       !format_number("ZCALL_CAMERA_FPS_DEN",&source->fps_den) ||
+    if(!source->width || !source->height || source->width>MAXLONG || source->height>MAXLONG ||
+       !source->fps_num || !source->fps_den ||
        source->fps_num>1000000 || source->fps_den>1000000)return VFW_E_INVALIDMEDIATYPE;
     bytes=(((ULONGLONG)source->width*3+3)&~3ULL)*source->height;
     interval=(10000000ULL*source->fps_den+source->fps_num/2)/source->fps_num;
@@ -224,7 +227,7 @@ static HRESULT camera_connect(struct camera_source *source)
     unsigned long number;
     DWORD token_length = GetEnvironmentVariableA("ZCALL_CAMERA_TOKEN", token, sizeof(token) - 2);
     DWORD port_length = GetEnvironmentVariableA("ZCALL_CAMERA_PORT", port, sizeof(port));
-    if (!token_length || token_length >= sizeof(token) - 2 ||
+    if (token_length != 64 ||
         !port_length || port_length >= sizeof(port)) return VFW_E_NOT_CONNECTED;
     number = strtoul(port, &end, 10);
     if (*end || !number || number > 65535) return E_INVALIDARG;
@@ -234,6 +237,10 @@ static HRESULT camera_connect(struct camera_source *source)
     setsockopt(source->socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     memset(&address, 0, sizeof(address)); address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK); address.sin_port = htons((u_short)number);
+    if (source->camera_index >= 0) {
+        token_length += snprintf(token+token_length,sizeof(token)-token_length,
+                                 " %ld",source->camera_index);
+    }
     token[token_length++] = '\n';
     if (connect(source->socket, (struct sockaddr *)&address, sizeof(address)) ||
         send(source->socket, token, token_length, 0) != (int)token_length ||
@@ -246,10 +253,27 @@ static HRESULT camera_connect(struct camera_source *source)
     return S_OK;
 }
 
+static REFERENCE_TIME camera_time(struct camera_source *source, LONG *generation)
+{
+    LARGE_INTEGER now;
+    REFERENCE_TIME time;
+    EnterCriticalSection(&source->timing_lock);
+    if (!source->clock || FAILED(IReferenceClock_GetTime(source->clock, &time))) {
+        LONGLONG elapsed, frequency = source->counter_frequency.QuadPart;
+        QueryPerformanceCounter(&now);
+        elapsed = now.QuadPart - source->run_counter.QuadPart;
+        time = elapsed / frequency * 10000000 + elapsed % frequency * 10000000 / frequency;
+    } else time -= source->run_start;
+    *generation = source->run_generation;
+    LeaveCriticalSection(&source->timing_lock);
+    return time < 0 ? 0 : time;
+}
+
 static DWORD WINAPI camera_thread(void *arg)
 {
     struct camera_source *source = arg;
-    REFERENCE_TIME start = 0, end;
+    REFERENCE_TIME start, end, previous = -1;
+    LONG generation = -1, current_generation;
     CoInitializeEx(NULL, COINIT_MULTITHREADED);
     while (WaitForSingleObject(source->stop, 0) == WAIT_TIMEOUT) {
         IMediaSample *sample = NULL;
@@ -259,14 +283,20 @@ static DWORD WINAPI camera_thread(void *arg)
         result = IMediaSample_GetPointer(sample, &buffer);
         if (FAILED(result) || IMediaSample_GetSize(sample) < (LONG)source->frame_bytes ||
             !socket_read(source->socket, buffer, source->frame_bytes)) { IMediaSample_Release(sample); break; }
-        if (source->state == State_Running || source->state == State_Paused) {
+        /* Live capture must not call the sink while the graph is paused. */
+        if (source->state == State_Running) {
+            start = camera_time(source, &current_generation);
+            if (current_generation != generation) previous = -1;
+            if (start <= previous) start = previous + 1;
             end = start + source->interval;
             IMediaSample_SetActualDataLength(sample, source->frame_bytes);
             IMediaSample_SetTime(sample, &start, &end);
             IMediaSample_SetSyncPoint(sample, TRUE);
-            IMediaSample_SetDiscontinuity(sample, start == 0);
+            IMediaSample_SetDiscontinuity(sample, previous < 0 ||
+                                         start - previous > source->interval * 3 / 2);
             result = IMemInputPin_Receive(source->input, sample);
-            start = end;
+            previous = start;
+            generation = current_generation;
         }
         IMediaSample_Release(sample);
         if (FAILED(result)) break;
@@ -306,6 +336,7 @@ static ULONG source_release(struct camera_source *source)
         if (source->input) IMemInputPin_Release(source->input);
         if (source->allocator) IMemAllocator_Release(source->allocator);
         if (source->clock) IReferenceClock_Release(source->clock);
+        DeleteCriticalSection(&source->timing_lock);
         CloseHandle(source->stop); HeapFree(GetProcessHeap(), 0, source);
     }
     return refs;
@@ -350,13 +381,23 @@ static HRESULT source_start(struct camera_source *source)
 static HRESULT WINAPI filter_pause(IBaseFilter *p)
 { struct camera_source *s=SOURCE(filter,p);trace_hook("camera-hook: pause\r\n");s->state=State_Paused;return source_start(s); }
 static HRESULT WINAPI filter_run(IBaseFilter *p, REFERENCE_TIME start)
-{ struct camera_source *s=SOURCE(filter,p);(void)start;trace_hook("camera-hook: run\r\n");s->state=State_Running;return source_start(s); }
+{
+    struct camera_source *s=SOURCE(filter,p);
+    trace_hook("camera-hook: run\r\n");
+    EnterCriticalSection(&s->timing_lock);
+    s->run_start=start;
+    QueryPerformanceCounter(&s->run_counter);
+    ++s->run_generation;
+    s->state=State_Running;
+    LeaveCriticalSection(&s->timing_lock);
+    return source_start(s);
+}
 static HRESULT WINAPI filter_state(IBaseFilter *p, DWORD timeout, FILTER_STATE *out)
-{ (void)timeout; if (!out) return E_POINTER; *out = SOURCE(filter,p)->state; return S_OK; }
+{ (void)timeout; if (!out) return E_POINTER; *out = SOURCE(filter,p)->state; return *out == State_Paused ? VFW_S_CANT_CUE : S_OK; }
 static HRESULT WINAPI filter_setclock(IBaseFilter *p, IReferenceClock *clock)
-{ struct camera_source *s=SOURCE(filter,p); if(clock) IReferenceClock_AddRef(clock); if(s->clock) IReferenceClock_Release(s->clock); s->clock=clock; return S_OK; }
+{ struct camera_source *s=SOURCE(filter,p); if(clock) IReferenceClock_AddRef(clock); EnterCriticalSection(&s->timing_lock); if(s->clock) IReferenceClock_Release(s->clock); s->clock=clock; LeaveCriticalSection(&s->timing_lock); return S_OK; }
 static HRESULT WINAPI filter_getclock(IBaseFilter *p, IReferenceClock **out)
-{ if(!out)return E_POINTER; *out=SOURCE(filter,p)->clock; if(*out)IReferenceClock_AddRef(*out); return S_OK; }
+{ struct camera_source *s=SOURCE(filter,p); if(!out)return E_POINTER; EnterCriticalSection(&s->timing_lock); *out=s->clock; if(*out)IReferenceClock_AddRef(*out); LeaveCriticalSection(&s->timing_lock); return S_OK; }
 static HRESULT WINAPI filter_pins(IBaseFilter *p, IEnumPins **out) { return enum_new(SOURCE(filter,p),FALSE,0,(void **)out); }
 static HRESULT WINAPI filter_find(IBaseFilter *p, LPCWSTR id, IPin **out)
 { if(!out)return E_POINTER; *out=NULL; if(!id || lstrcmpW(id,L"Capture"))return VFW_E_NOT_FOUND; *out=&SOURCE(filter,p)->pin; pin_addref(*out); return S_OK; }
@@ -502,7 +543,45 @@ static HRESULT WINAPI bag_class(IPersistPropertyBag *p, CLSID *out)
 { return filter_class(&SOURCE(bag,p)->filter,out); }
 static HRESULT WINAPI bag_init(IPersistPropertyBag *p) { (void)p;return S_OK; }
 static HRESULT WINAPI bag_load(IPersistPropertyBag *p, IPropertyBag *bag, IErrorLog *log)
-{ (void)p;(void)bag;(void)log;return S_OK; }
+{
+    struct camera_source *source=SOURCE(bag,p), selected={0};
+    VARIANT index;
+    HRESULT result;
+    if(!bag)return E_POINTER;
+    if(source->state!=State_Stopped || source->peer)return VFW_E_NOT_STOPPED;
+    VariantInit(&index);
+    V_VT(&index)=VT_I4;
+    result=IPropertyBag_Read(bag,L"VFWIndex",&index,log);
+    if(SUCCEEDED(result)) {
+        if(V_VT(&index)!=VT_I4 || V_I4(&index)<0)result=E_INVALIDARG;
+        else {
+            selected.camera_index=V_I4(&index);
+            const WCHAR *names[]={L"ZcallWidth",L"ZcallHeight",L"ZcallFpsNum",L"ZcallFpsDen"};
+            DWORD *fields[]={&selected.width,&selected.height,&selected.fps_num,&selected.fps_den};
+            unsigned i;
+            for(i=0;i<4 && SUCCEEDED(result);++i) {
+                VARIANT value;
+                VariantInit(&value);V_VT(&value)=VT_I4;
+                result=IPropertyBag_Read(bag,names[i],&value,log);
+                if(SUCCEEDED(result)) {
+                    if(V_VT(&value)!=VT_I4 || V_I4(&value)<=0)result=E_INVALIDARG;
+                    else *fields[i]=V_I4(&value);
+                }
+                VariantClear(&value);
+            }
+            if(SUCCEEDED(result))result=source_format(&selected);
+            if(SUCCEEDED(result)) {
+                source->camera_index=selected.camera_index;
+                source->width=selected.width;source->height=selected.height;
+                source->fps_num=selected.fps_num;source->fps_den=selected.fps_den;
+                source->frame_bytes=selected.frame_bytes;source->interval=selected.interval;
+                source->bit_rate=selected.bit_rate;
+            }
+        }
+    }
+    VariantClear(&index);
+    return result;
+}
 static HRESULT WINAPI bag_save(IPersistPropertyBag *p, IPropertyBag *bag, BOOL clear, BOOL all)
 { (void)p;(void)bag;(void)clear;(void)all;return E_NOTIMPL; }
 static IPersistPropertyBagVtbl bag_vtable = {bag_query,bag_addref,bag_release,bag_class,bag_init,bag_load,bag_save};
@@ -522,6 +601,13 @@ static HRESULT camera_source_create(IUnknown *outer, REFIID iid, void **out)
     if(!out)return E_POINTER;
     *out=NULL;if(outer)return CLASS_E_NOAGGREGATION;
     s=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*s));if(!s)return E_OUTOFMEMORY;
+    s->camera_index=-1;
+    if(!format_number("ZCALL_CAMERA_WIDTH",&s->width) ||
+       !format_number("ZCALL_CAMERA_HEIGHT",&s->height) ||
+       !format_number("ZCALL_CAMERA_FPS_NUM",&s->fps_num) ||
+       !format_number("ZCALL_CAMERA_FPS_DEN",&s->fps_den)) {
+        s->width=16;s->height=16;s->fps_num=30;s->fps_den=1;
+    }
     result=source_format(s);
     if(FAILED(result)){HeapFree(GetProcessHeap(),0,s);return result;}
     s->filter.lpVtbl=&filter_vtable;s->pin.lpVtbl=&pin_vtable;
@@ -529,6 +615,9 @@ static HRESULT camera_source_create(IUnknown *outer, REFIID iid, void **out)
     s->bag.lpVtbl=&bag_vtable;s->properties.lpVtbl=&properties_vtable;
     s->refs=1;s->socket=INVALID_SOCKET;s->stop=CreateEventW(NULL,TRUE,FALSE,NULL);
     if(!s->stop){HeapFree(GetProcessHeap(),0,s);return E_FAIL;}
+    InitializeCriticalSection(&s->timing_lock);
+    QueryPerformanceFrequency(&s->counter_frequency);
+    QueryPerformanceCounter(&s->run_counter);
     lstrcpynW(s->name,L"PipeWire camera",128);
     result=source_query(s,iid,out);source_release(s);return result;
 }

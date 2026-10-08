@@ -27,8 +27,8 @@
  * Call mode (zcall-config.json "callMode", chosen in the settings window):
  *   auto   (default) steps 1-3 run at launch: the first call starts at once
  *   lazy   nothing runs at launch; steps 1-3 run in the background when the
- *          call engine is first needed, so that first call takes longer
- *   off    wine is never started; a call attempt shows a notification
+ *          call engine is needed; Wine and bridges stop when the call ends
+ *   off    wine is never started; local call attempts show a notification
  *
  * Configuration (env vars):
  *   ZCALL_WINE                 wine binary (highest priority)
@@ -40,7 +40,7 @@
 
 'use strict';
 
-const { spawn, spawnSync, execSync } = require('child_process');
+const { spawn, spawnSync, execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -142,6 +142,50 @@ function findDownloadedWine(userDataDir) {
   return fs.existsSync(p) ? p : null;
 }
 
+function hasUnix32Runtime(root) {
+  return ['lib', 'lib64', 'lib32'].some(dir => {
+    try { return fs.statSync(path.join(root, dir, 'wine', 'i386-unix')).isDirectory(); }
+    catch (_) { return false; }
+  });
+}
+
+function findLegacyDownloadedWine(userDataDir) {
+  const wine = findDownloadedWine(userDataDir);
+  return wine && hasUnix32Runtime(path.join(userDataDir, RUNTIME_DIRNAME)) ? wine : null;
+}
+
+function isLegacyRuntimeWine(winePath) {
+  if (!winePath) return false;
+  const paths = [path.resolve(winePath)];
+  try { paths.push(fs.realpathSync(winePath)); } catch (_) {}
+  return paths.some(file => {
+    const root = path.dirname(path.dirname(file));
+    return path.basename(root) === RUNTIME_DIRNAME && hasUnix32Runtime(root);
+  });
+}
+
+function stopLegacyRuntime() {
+  if (!isLegacyRuntimeWine(process.env.ZCALL_WINE)) return false;
+  shutdown();
+  delete process.env.ZCALL_WINE;
+  return true;
+}
+
+let legacyRuntimeWarned = false;
+let legacyRuntimePrompt = null;
+function warnLegacyRuntime(userDataDir, onCall = false) {
+  const wine = findLegacyDownloadedWine(userDataDir);
+  if (!wine || getCallMode(userDataDir) === 'off') return null;
+  stopLegacyRuntime();
+  if (legacyRuntimePrompt) return legacyRuntimePrompt;
+  if (legacyRuntimeWarned && !onCall) return null;
+  legacyRuntimeWarned = true;
+  legacyRuntimePrompt = showBrokenWineDialog(wine, userDataDir).finally(() => {
+    legacyRuntimePrompt = null;
+  });
+  return legacyRuntimePrompt;
+}
+
 /**
  * Wine bundled inside the "Full" AppImage variant (app/native/wine-runtime).
  * In the packaged app, app/ sits at the AppImage mount root next to the
@@ -201,7 +245,45 @@ function debugLog(msg) {
   } catch (e) { /* ignore */ }
 }
 
+let lastPrefixWine = null;
+function stopWineForChange(prefix) {
+  debugLog('stopping Wine before runtime/prefix change: ' + prefix);
+  if (wineActivated) shutdown();
+  else if (fs.existsSync(prefix)) killWineSession(prefix);
+}
+
+function resetWin32Prefix(prefix) {
+  const win32 = ['system.reg', 'user.reg', 'userdef.reg'].some(name => {
+    try { return /^#arch=win32\r?$/m.test(fs.readFileSync(path.join(prefix, name), 'utf8')); }
+    catch (_) { return false; }
+  });
+  if (!win32) return false;
+  stopWineForChange(prefix);
+  fs.rmSync(prefix, { recursive: true, force: true });
+  debugLog('removed incompatible win32 prefix: ' + prefix);
+  return true;
+}
+
+function prepareWinePrefix(wine, prefix) {
+  let previous = lastPrefixWine || process.env.ZCALL_WINE;
+  let next = wine;
+  try { previous = fs.realpathSync(previous); } catch (_) {}
+  try { next = fs.realpathSync(next); } catch (_) {}
+  const reset = resetWin32Prefix(prefix);
+  if (!reset && previous && path.resolve(previous) !== path.resolve(next)) stopWineForChange(prefix);
+  lastPrefixWine = wine;
+  return reset;
+}
+
+function prepareWineCheck(wine, prefix) {
+  if (!resetWin32Prefix(prefix)) stopWineForChange(prefix);
+  lastPrefixWine = wine;
+}
+
 function validateWine(winePath, prefix) {
+  if (awaitingFirstRunChoice) return false;
+  prepareWineCheck(winePath, prefix);
+  if (isLegacyRuntimeWine(winePath)) return false;
   const pipebridgePath = findPipebridgePath();
   if (!pipebridgePath) {
     debugLog('validate: pipebridge.exe not found (resourcesPath=' + (process.resourcesPath || '') + ')');
@@ -211,6 +293,7 @@ function validateWine(winePath, prefix) {
   // only one prefix. A cold first run needs a generous timeout.
   const valPrefix = prefix;
   try {
+    prepareWinePrefix(winePath, prefix);
     const res = spawnSync(winePath, [pipebridgePath, '--version'], {
       env: Object.assign({}, process.env, { WINEPREFIX: valPrefix, WINEDEBUG: '-all' }),
       encoding: 'utf8',
@@ -263,6 +346,7 @@ function wineCheckKey(winePath, prefix) {
 }
 
 function isWineCheckCached(userDataDir, winePath, prefix) {
+  if (isLegacyRuntimeWine(winePath)) return false;
   const key = wineCheckKey(winePath, prefix);
   if (!key) return false;
   try {
@@ -282,36 +366,51 @@ function writeWineCheck(userDataDir, winePath, prefix) {
   } catch (_) { /* cache only */ }
 }
 
-// Runs wine without blocking the main process. Resolves { code, out }.
+// Runs wine without blocking the main process. Resolves { code, out, stderr }.
 function runWineAsync(winePath, args, prefix, timeoutMs) {
+  if (awaitingFirstRunChoice) return Promise.resolve({ code: -1, out: '', stderr: 'Chưa chọn chế độ gọi điện.' });
+  if (isLegacyRuntimeWine(winePath)) return Promise.resolve({ code: -1, out: '' });
   return new Promise((resolve) => {
     let out = '';
+    let stderr = '';
     let done = false;
     const finish = (code) => {
       if (done) return;
       done = true;
       clearTimeout(kill);
-      resolve({ code, out });
+      if (code !== 0) debugLog('wine command FAILED: ' + winePath + ' ' + args[0] + ' status=' + code + ' ' + stderr.trim());
+      resolve({ code, out, stderr });
     };
     let child;
     try {
+      prepareWinePrefix(winePath, prefix);
       child = spawn(winePath, args, {
         env: Object.assign({}, process.env, { WINEPREFIX: prefix, WINEDEBUG: '-all' }),
-        stdio: ['ignore', 'pipe', 'ignore']
+        stdio: ['ignore', 'pipe', 'pipe']
       });
     } catch (e) {
       resolve({ code: -1, out: '' });
       return;
     }
-    const kill = setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, timeoutMs);
+    const kill = setTimeout(() => {
+      debugLog('wine command timed out: ' + winePath + ' ' + args[0]);
+      try { child.kill('SIGKILL'); } catch (_) {}
+      finish(-1);
+    }, timeoutMs);
     child.stdout.on('data', (d) => { out += d; });
+    child.stderr.on('data', d => { stderr = (stderr + d).slice(-2000); });
     child.on('error', () => finish(-1));
+    // Cold Wine services can inherit stdout. Wait for the command's exit,
+    // rather than waiting for every descendant to close the pipe.
+    child.on('exit', (code) => finish(code));
     child.on('close', (code) => finish(code));
   });
 }
 
 // Same check as validateWine(), without blocking the main process.
 async function validateWineAsync(winePath, prefix) {
+  if (awaitingFirstRunChoice) return false;
+  prepareWineCheck(winePath, prefix);
   const pipebridgePath = findPipebridgePath();
   if (!pipebridgePath) return false;
   const { code, out } = await runWineAsync(winePath, [pipebridgePath, '--version'], prefix, 120000);
@@ -321,7 +420,11 @@ async function validateWineAsync(winePath, prefix) {
 }
 
 function recheckWineLater(userDataDir, winePath, prefix) {
+  const generation = preparationGeneration;
   const timer = setTimeout(async () => {
+    if (generation !== preparationGeneration || getCallMode(userDataDir) === 'off') return;
+    // A background check must never stop an active call or restart idle lazy Wine.
+    if (wineActivated || preparing || callRunning || getCallMode(userDataDir) === 'lazy') return;
     if (!findPipebridgePath()) return;
     if (await validateWineAsync(winePath, prefix)) return;
     debugLog('background re-check FAILED wine=' + winePath + ' — cache cleared');
@@ -412,8 +515,14 @@ async function installDownloadedWine(userDataDir, onProgress) {
   fs.mkdirSync(userDataDir, { recursive: true });
   await downloadFile(url, tarball, onProgress);
 
+  // Validate the completed download before removing the previous runtime.
+  execFileSync('tar', ['-tf', tarball], { stdio: 'ignore' });
+  const prefix = winePrefix(userDataDir);
+  prepareWineCheck(path.join(runtimeDir, 'bin', 'wine'), prefix);
+  writeWineCheck(userDataDir, null, prefix);
+  fs.rmSync(runtimeDir, { recursive: true, force: true });
   fs.mkdirSync(runtimeDir, { recursive: true });
-  execSync(`tar -xf "${tarball}" -C "${runtimeDir}" --strip-components=1`, { stdio: 'pipe' });
+  execFileSync('tar', ['-xf', tarball, '-C', runtimeDir, '--strip-components=1'], { stdio: 'pipe' });
   fs.unlinkSync(tarball);
 
   const wine = path.join(runtimeDir, 'bin', 'wine');
@@ -584,6 +693,7 @@ function showProgressWindow() {
 }
 
 async function promptAndInstall(userDataDir, failedWine, directDownload = false) {
+  if (awaitingFirstRunChoice) return null;
   getElectronModules();
   if (!BrowserWindowModule) return null;
   if (askWindowOpen || wineDownloadInProgress) return null; // never show two ask/download windows
@@ -595,6 +705,8 @@ async function promptAndInstall(userDataDir, failedWine, directDownload = false)
   } finally {
     askWindowOpen = false;
   }
+
+  if (getCallMode(userDataDir) === 'off') return null;
 
   if (!result.download) {
     // User picked an existing wine file: save it and use it.
@@ -624,26 +736,32 @@ async function promptAndInstall(userDataDir, failedWine, directDownload = false)
       const pct = Math.round((got / total) * 100);
       progress.set(pct, `Đang tải… ${Math.round(got / 1024 / 1024)}MB / ${Math.round(total / 1024 / 1024)}MB (${pct}%)`);
     });
+    if (findLegacyDownloadedWine(userDataDir)) {
+      throw new Error('Runtime vừa tải không phải Wine WoW64 mới. Hãy tải bản amd64-wow64 thay cho bản amd64 thuần.');
+    }
     debugLog('install: downloaded, extracting...');
     progress.set(100, 'Đang giải nén và chuẩn bị…');
+    if (getCallMode(userDataDir) === 'off') { progress.close(); return null; }
 
     // First prefix init (~10-30s, done once)
     const prefix = process.env.ZCALL_WINEPREFIX || path.join(userDataDir, 'zcall-wine');
-    spawnSync(wine, ['wineboot', '-u'], {
-      env: Object.assign({}, process.env, { WINEPREFIX: prefix, WINEDEBUG: '-all' }),
-      stdio: 'ignore',
-      timeout: 180000
-    });
+    const boot = await runWineAsync(wine, ['wineboot', '-u'], prefix, 180000);
+    if (boot.code !== 0) {
+      throw new Error('Không thể chuẩn bị môi trường Wine.\n\n' + (boot.stderr || 'wineboot thất bại (mã ' + boot.code + ').'));
+    }
+    if (getCallMode(userDataDir) === 'off') { progress.close(); return null; }
 
     // Verify the freshly downloaded wine actually works on this machine —
     // This verifies the PE32 helper under the selected WoW64 runtime.
-    if (!validateWine(wine, prefix)) {
+    if (!await validateWineAsync(wine, prefix)) {
       const hint = getWineInstallHint();
       throw new Error(
         'Wine WoW64 không khởi động được trên máy này.\n\n' +
         hint.title + '\n' + hint.command
       );
     }
+    if (getCallMode(userDataDir) === 'off') { progress.close(); return null; }
+    writeWineCheck(userDataDir, wine, prefix);
 
     progress.close();
     debugLog('install: SUCCESS wine=' + wine + ' prefix=' + prefix);
@@ -668,7 +786,7 @@ async function promptAndInstall(userDataDir, failedWine, directDownload = false)
       await dialogModule.showMessageBox(parent, {
         type: 'error',
         title: 'Zalo — Tính năng gọi điện',
-        message: 'Không thể tải Wine',
+        message: 'Không thể tải hoặc chuẩn bị Wine',
         detail: String((e && e.message) || e) + '\n\nBạn có thể thử lại từ menu khay hệ thống, hoặc cài Wine bằng lệnh: sudo apt install wine'
       });
     }
@@ -703,7 +821,7 @@ function wineCandidates(userDataDir) {
   if (bundledWine) candidates.push(bundledWine);
   if (downloadedWine && candidates.indexOf(downloadedWine) === -1) candidates.push(downloadedWine);
   if (systemWine && candidates.indexOf(systemWine) === -1) candidates.push(systemWine);
-  return { candidates, downloadedWine };
+  return { candidates: candidates.filter(wine => !isLegacyRuntimeWine(wine)), downloadedWine };
 }
 
 // Blocking discovery, used at launch in "auto" mode.
@@ -711,6 +829,7 @@ function findUsableWineSync(userDataDir, prefix) {
   const { candidates, downloadedWine } = wineCandidates(userDataDir);
   let failedWine = null;
   for (const candidate of candidates) {
+    if (prepareWinePrefix(candidate, prefix)) writeWineCheck(userDataDir, null, prefix);
     // Ensure the prefix exists before validating (validation needs a booted prefix)
     if (!fs.existsSync(path.join(prefix, 'drive_c'))) {
       console.log('[zcall-bridge] initializing wine prefix:', prefix);
@@ -743,6 +862,13 @@ function findUsableWineSync(userDataDir, prefix) {
 // Same discovery without blocking the main process, used in "lazy" mode.
 // onSlow fires once before the first wineboot or uncached validation.
 async function findUsableWineAsync(userDataDir, prefix, onSlow) {
+  const generation = preparationGeneration;
+  const checkActive = () => {
+    if (generation !== preparationGeneration || getCallMode(userDataDir) === 'off') {
+      throw new Error('calls disabled');
+    }
+  };
+  checkActive();
   const { candidates, downloadedWine } = wineCandidates(userDataDir);
   let failedWine = null;
   let slowNotified = false;
@@ -752,17 +878,22 @@ async function findUsableWineAsync(userDataDir, prefix, onSlow) {
     if (onSlow) onSlow();
   };
   for (const candidate of candidates) {
+    checkActive();
+    if (prepareWinePrefix(candidate, prefix)) writeWineCheck(userDataDir, null, prefix);
     if (!fs.existsSync(path.join(prefix, 'drive_c'))) {
       slow();
       console.log('[zcall-bridge] initializing wine prefix:', prefix);
       await runWineAsync(candidate, ['wineboot', '-u'], prefix, 180000);
+      checkActive();
     }
     if (isWineCheckCached(userDataDir, candidate, prefix)) {
       recheckWineLater(userDataDir, candidate, prefix);
       return { wine: candidate, downloadedWine, failedWine };
     }
     slow();
-    if (await validateWineAsync(candidate, prefix)) {
+    const usable = await validateWineAsync(candidate, prefix);
+    checkActive();
+    if (usable) {
       writeWineCheck(userDataDir, candidate, prefix);
       return { wine: candidate, downloadedWine, failedWine };
     }
@@ -776,6 +907,7 @@ async function findUsableWineAsync(userDataDir, prefix, onSlow) {
 // declined for good; on a call attempt they asked for it, so always ask.
 function handleNoWine(userDataDir, { downloadedWine, failedWine }, onCall) {
   const cfg = readConfig(userDataDir);
+  if (findLegacyDownloadedWine(userDataDir)) return warnLegacyRuntime(userDataDir, onCall);
 
   // Downloaded runtime exists but cannot start: re-downloading would loop
   // forever — guide the user
@@ -784,7 +916,7 @@ function handleNoWine(userDataDir, { downloadedWine, failedWine }, onCall) {
     console.error('[zcall-bridge] downloaded WoW64 runtime failed validation');
     if (onCall || (cfg.wineSetup !== 'broken' && process.env.ZCALL_AUTO_SETUP !== '1')) {
       writeConfig(userDataDir, { wineSetup: 'broken' });
-      showBrokenWineDialog(downloadedWine, userDataDir);
+      return showBrokenWineDialog(downloadedWine, userDataDir);
     }
     return;
   }
@@ -797,8 +929,9 @@ function handleNoWine(userDataDir, { downloadedWine, failedWine }, onCall) {
     return;
   }
   console.log('[zcall-bridge] no usable wine, prompting user to set up...');
-  promptAndInstall(userDataDir, failedWine).then((w) => {
+  return promptAndInstall(userDataDir, failedWine).then((w) => {
     if (w) console.log('[zcall-bridge] portable wine ready:', w);
+    return w;
   }).catch((e) => console.error('[zcall-bridge] setup failed:', e.message));
 }
 
@@ -808,17 +941,60 @@ let cameraReady = Promise.resolve();
 
 // Exports the environment the patched main-dist spawn code reads and starts
 // the screen-share watchers. Runs once per session.
+function exportCameras(cameras) {
+  for (const name of Object.keys(process.env)) {
+    if (/^ZCALL_CAMERA_[0-9]+_(?:FORMAT|NAME|INDEX)$/.test(name)) delete process.env[name];
+  }
+  for (const camera of cameras) {
+    const { width, height, num, den } = camera.format;
+    process.env[`ZCALL_CAMERA_${camera.index}_FORMAT`] = `${width},${height},${num},${den}`;
+    process.env[`ZCALL_CAMERA_${camera.index}_NAME`] = camera.name;
+  }
+  process.env.ZCALL_CAMERA_COUNT = String(cameras.length);
+  cameras.forEach((camera, index) => {
+    process.env[`ZCALL_CAMERA_${index}_INDEX`] = String(camera.index);
+  });
+}
+
+function registerCameraHook(wine, prefix) {
+  const hook=zcallBridgePath('camera-hook.dll');
+  if(!fs.existsSync(hook))return Promise.reject(new Error('camera-hook.dll missing; run setup-zcall-bridge.js'));
+  const winePath='Z:'+hook.replace(/\//g,'\\');
+  debugLog('camera: registering hook with ' + wine);
+  return runWineAsync(wine,['regsvr32','/s',winePath],prefix,120000).then(({code})=>{
+    if(code!==0)throw new Error('camera hook registration failed (exit '+code+')');
+    debugLog('camera: hook registered');
+  });
+}
+
 function activateWine(wine, prefix) {
+  if (isLegacyRuntimeWine(wine)) throw new Error('Runtime Wine thuần bị chặn. Cần tải Wine WoW64 mới.');
   process.env.ZCALL_WINE = wine;
   process.env.ZCALL_WINEPREFIX = prefix;
   if (!process.env.WINEDEBUG) process.env.WINEDEBUG = '-all';
   if (wineActivated) return;
   wineActivated = true;
 
-  cameraBridge = startCameraBridge({ log: message => debugLog('camera: ' + message) });
-  cameraReady = cameraBridge.ready.then(({ port, token, format }) => {
+  let registering=Promise.resolve();
+  const activeBridge = startCameraBridge({ log: message => debugLog('camera: ' + message), onChange(cameras) {
+    registering=registering.then(()=>cameraReady).then(async()=>{
+      if(!wineActivated || cameraBridge!==activeBridge)return;
+      exportCameras(cameras);
+      await registerCameraHook(wine,prefix);
+      for (const contents of switchContents) {
+        if (!contents.isDestroyed()) {
+          contents.executeJavaScript('window.__zcallCameraRefresh&&window.__zcallCameraRefresh()',true).catch(() => {});
+        }
+      }
+      debugLog('camera: device list refreshed ('+cameras.length+')');
+    }).catch(error=>debugLog('camera: refresh failed: '+error.message));
+  } });
+  cameraBridge=activeBridge;
+  cameraReady = cameraBridge.ready.then(async ({ port, token, format, cameras }) => {
+    if (cameraBridge !== activeBridge) throw new Error('camera preparation cancelled');
     process.env.ZCALL_CAMERA_PORT = String(port);
     process.env.ZCALL_CAMERA_TOKEN = token;
+    exportCameras(cameras);
     if (format) {
       process.env.ZCALL_CAMERA_WIDTH = String(format.width);
       process.env.ZCALL_CAMERA_HEIGHT = String(format.height);
@@ -828,24 +1004,14 @@ function activateWine(wine, prefix) {
       for (const name of ['ZCALL_CAMERA_WIDTH', 'ZCALL_CAMERA_HEIGHT', 'ZCALL_CAMERA_FPS_NUM', 'ZCALL_CAMERA_FPS_DEN'])
         delete process.env[name];
     }
-    const hook = zcallBridgePath('camera-hook.dll');
-    if (fs.existsSync(hook)) {
-      const winePath = 'Z:' + hook.replace(/\//g, '\\');
-      const result = spawnSync(wine, ['regsvr32', '/s', winePath], {
-        env: { ...process.env, WINEPREFIX: prefix, WINEARCH: 'wow64' },
-        encoding: 'utf8', timeout: 15000
-      });
-      if (result.status === 0) {
-        process.env.ZCALL_CAMERA_HOOK_LOG = 'Z:' + path.join(os.homedir(), '.config', 'ZaloData', 'zcall-camera-hook.log').replace(/\//g, '\\');
-        console.log('[zcall-bridge] WoW64 camera COM hook registered');
-      } else {
-        throw new Error('camera COM hook registration failed: ' + (result.error || result.stderr || result.status));
-      }
-    } else {
-      throw new Error('camera-hook.dll missing; run setup-zcall-bridge.js');
-    }
+    await registerCameraHook(wine,prefix);
+    if (cameraBridge !== activeBridge) throw new Error('camera preparation cancelled');
+    process.env.ZCALL_CAMERA_HOOK_LOG = 'Z:' + path.join(os.homedir(), '.config', 'ZaloData', 'zcall-camera-hook.log').replace(/\//g, '\\');
+    console.log('[zcall-bridge] WoW64 camera COM hook registered');
   });
   cameraReady.catch(error => {
+    debugLog('camera preparation FAILED: ' + error.message);
+    if (cameraBridge !== activeBridge) return;
     console.error('[zcall-bridge]', error.message);
     wineActivated = false;
     if (cameraBridge) cameraBridge.close();
@@ -874,7 +1040,6 @@ function activateWine(wine, prefix) {
       if (/^\d+x\d+$/.test(out.trim())) cachedBridgeRes = out.trim();
     } catch (e) { /* default */ }
     watchShareRequests();
-    watchCallState();
   }
 
   console.log('[zcall-bridge] wine ready:', wine, '(prefix:', prefix + ')');
@@ -901,23 +1066,50 @@ function notify(body, onClick) {
 // right before it spawns the call engine; a rejection aborts that start and
 // Zalo retries on the next call.
 let preparing = null;
+let awaitingFirstRunChoice = false;
+let preparationGeneration = 0;
+let shutdownTimer = null;
 
-function prepareOnCall(userDataDir, prefix) {
-  if (wineActivated) return cameraReady.then(() => process.env.ZCALL_WINE);
+function isDeviceQuery(message) {
+  return !!(message && message.type === 'request' && message.command === 'listDevice');
+}
+
+function prepareOnCall(userDataDir, prefix, message) {
+  stopLegacyRuntime();
+  const silent = isDeviceQuery(message) || (getCallMode(userDataDir) === 'lazy' &&
+    message && ['control', 'recvSignal'].includes(message.type));
+  const generation = preparationGeneration;
+  const checkActive = () => {
+    if (generation !== preparationGeneration || getCallMode(userDataDir) === 'off') {
+      throw new Error('calls disabled');
+    }
+  };
+  if (wineActivated) return cameraReady.then(() => { checkActive(); return process.env.ZCALL_WINE; });
   if (!preparing) {
-    preparing = findUsableWineAsync(userDataDir, prefix, () => {
-      notify('Đang chuẩn bị tính năng gọi điện lần đầu, vui lòng chờ trong giây lát…');
-    }).then((found) => {
-      preparing = null;
-      if (found.wine) {
-        activateWine(found.wine, prefix);
-        return cameraReady.then(() => found.wine);
+    debugLog('lazy: preparing Wine for first call');
+    preparing = (async () => {
+      checkActive();
+      process.env.WINEPREFIX = prefix;
+      if (!silent) notify('Đang chuẩn bị Wine để gọi điện, vui lòng chờ trong giây lát…');
+      const found = await findUsableWineAsync(userDataDir, prefix);
+      checkActive();
+      const wine = found.wine || (!silent && await handleNoWine(userDataDir, found, true));
+      checkActive();
+      if (!wine) throw new Error('no usable wine');
+      activateWine(wine, prefix);
+      await cameraReady;
+      checkActive();
+      return wine;
+    })().catch(error => {
+      debugLog('call preparation FAILED: ' + error.message);
+      if (!silent && generation === preparationGeneration &&
+          !['calls disabled', 'no usable wine', 'camera preparation cancelled'].includes(error.message)) {
+        notify('Không thể chuẩn bị tính năng gọi điện. Bấm vào đây để mở Cài đặt gọi điện.',
+          () => openSetupDialog({ userDataDir }));
       }
-      handleNoWine(userDataDir, found, true);
-      throw new Error('no usable wine');
-    }, (e) => {
-      preparing = null;
-      throw e;
+      throw error;
+    }).finally(() => {
+      if (generation === preparationGeneration) preparing = null;
     });
   }
   return preparing;
@@ -927,28 +1119,39 @@ function winePrefix(userDataDir) {
   return process.env.ZCALL_WINEPREFIX || path.join(userDataDir, 'zcall-wine');
 }
 
-// Sets the hooks the patched main-dist reads for this mode. `live` is a
-// change while the app runs: a wine that was never prepared (the app was
-// started with calls off) is then prepared on the next call.
-function installGate(mode, userDataDir, live) {
+// Unprepared Wine is prepared on the next call, including live mode changes.
+function installGate(mode, userDataDir) {
+  watchCallState(userDataDir);
+  // Late device updates and termination signals belong to the stopped call.
+  // Drop them before the transport can queue them or restart the helper.
+  global.__zcallShouldSend = message => {
+    if (stopLegacyRuntime()) warnLegacyRuntime(userDataDir);
+    return !(mode === 'off' && isDeviceQuery(message)) &&
+    (mode !== 'lazy' || wineActivated || !!preparing ||
+    !!(message && (
+      (message.type === 'request' && ['makeCall', 'listDevice'].includes(message.command)) ||
+      (message.type === 'control' && message.data && ['request', 'group_request'].includes(message.data.act))
+    )));
+  };
   // Zalo starts the call engine at launch when the server asks for it
   // (call.launch_native_in_startup); the patched main-dist skips that start
   // while this is set, so only a real call reaches __zcallPrepare.
   global.__zcallDeferStartup = mode !== 'auto';
 
   if (mode === 'off') {
-    global.__zcallPrepare = () => {
-      // Clickable: without a tray host (stock GNOME) the tray menu entry
-      // is unreachable, so this is a way back to the settings.
-      notify('Tính năng gọi điện đang tắt. Bấm vào đây để mở Cài đặt gọi điện.',
-        () => openSetupDialog({ userDataDir }));
+    preparationGeneration++;
+    preparing = null;
+    global.__zcallPrepare = (message) => {
+      // Remote call signals must not nag a user who explicitly disabled calls.
+      if (!isDeviceQuery(message) && (!message || !['control', 'recvSignal'].includes(message.type))) {
+        notify('Tính năng gọi điện đang tắt. Bấm vào đây để mở Cài đặt gọi điện.',
+          () => openSetupDialog({ userDataDir }));
+      }
       return Promise.reject(new Error('calls disabled'));
     };
-  } else if (mode === 'lazy' || (live && !wineActivated)) {
-    const prefix = winePrefix(userDataDir);
-    global.__zcallPrepare = () => prepareOnCall(userDataDir, prefix);
   } else {
-    global.__zcallPrepare = () => cameraReady;
+    const prefix = winePrefix(userDataDir);
+    global.__zcallPrepare = message => prepareOnCall(userDataDir, prefix, message);
   }
 }
 
@@ -965,24 +1168,49 @@ function setCallMode(userDataDir, mode) {
   if (mode !== 'off') cfg.callModeOn = mode;
   writeConfig(userDataDir, cfg);
 
+  if (awaitingFirstRunChoice) {
+    pushSwitchState(userDataDir);
+    setTimeout(() => launch({ userDataDir }), 0);
+    return;
+  }
+
   const effective = getCallMode(userDataDir);
-  installGate(effective, userDataDir, true);
+  installGate(effective, userDataDir);
   console.log('[zcall-bridge] call mode set to', effective);
   // Let the switch animation finish: killWineSession blocks for ~2 s.
-  if (effective === 'off' && process.env.ZCALL_WINEPREFIX) setTimeout(shutdown, 300);
+  clearTimeout(shutdownTimer);
+  shutdownTimer = null;
+  if (effective === 'off' && (process.env.ZCALL_WINEPREFIX || process.env.WINEPREFIX)) {
+    shutdownTimer = setTimeout(shutdown, 300);
+  }
   pushSwitchState(userDataDir);
+  if (effective !== 'off' && findLegacyDownloadedWine(userDataDir)) {
+    setTimeout(() => warnLegacyRuntime(userDataDir), FIRST_RUN_DELAY_MS);
+  }
 }
 
 function launch({ userDataDir }) {
   process.env.WINEARCH = 'wow64';
   const firstRun = needsFirstRunChoice(userDataDir);
-  const mode = firstRun ? 'lazy' : getCallMode(userDataDir);
-  installGate(mode, userDataDir, false);
-  if (firstRun) setTimeout(() => showFirstRunWindow(userDataDir), FIRST_RUN_DELAY_MS);
+  if (firstRun) {
+    awaitingFirstRunChoice = true;
+    global.__zcallDeferStartup = true;
+    global.__zcallShouldSend = () => false;
+    global.__zcallPrepare = () => Promise.reject(new Error('call mode not selected'));
+    setTimeout(() => showFirstRunWindow(userDataDir), FIRST_RUN_DELAY_MS);
+    return false;
+  }
+  awaitingFirstRunChoice = false;
+  const mode = getCallMode(userDataDir);
+  installGate(mode, userDataDir);
 
   if (mode === 'off') {
     console.log('[zcall-bridge] call mode off — wine not started');
     return false;
+  }
+
+  if (!firstRun && findLegacyDownloadedWine(userDataDir)) {
+    setTimeout(() => warnLegacyRuntime(userDataDir), FIRST_RUN_DELAY_MS);
   }
 
   const prefix = winePrefix(userDataDir);
@@ -991,16 +1219,7 @@ function launch({ userDataDir }) {
   // Clean stale wine processes from unclean previous exits
   sweepStaleProcesses(prefix);
 
-  // win64 and wow64 share a prefix; only an explicit win32 marker requires removal.
-  for (const name of ['system.reg', 'user.reg', 'userdef.reg']) {
-    try {
-      const registry = path.join(prefix, name);
-      if (fs.existsSync(registry) && /^#arch=win32\r?$/m.test(fs.readFileSync(registry, 'utf8'))) {
-        fs.rmSync(prefix, { recursive: true, force: true });
-        break;
-      }
-    } catch (e) { /* ignore */}
-  }
+  if (resetWin32Prefix(prefix)) writeWineCheck(userDataDir, null, prefix);
 
   if (mode === 'lazy') {
     console.log('[zcall-bridge] call mode lazy — wine is prepared on the first call');
@@ -1058,6 +1277,7 @@ function injectSwitch({ app, userDataDir }) {
       event.preventDefault();
       const command = title.slice(SWITCH_TRIGGER.length);
       if (command === 'settings') openSetupDialog({ userDataDir });
+      else if (command === 'settings-closed') stopIdleWine(userDataDir, 'settings closed');
       else if (command === 'on') setCallMode(userDataDir, readConfig(userDataDir).callModeOn || 'auto');
       else if (command === 'off') setCallMode(userDataDir, 'off');
     });
@@ -1076,8 +1296,10 @@ function injectSwitch({ app, userDataDir }) {
  * bridge pops the compositor's permission dialog automatically.
  */
 let lastAutoBridgeAt = 0;
+let shareRequestTimer = null;
 function watchShareRequests() {
-  setInterval(() => {
+  if (shareRequestTimer) return;
+  shareRequestTimer = setInterval(() => {
     const f = process.env.ZCALL_PROXY_REQUEST;
     if (!f || !fs.existsSync(f)) return;
     try { fs.unlinkSync(f); } catch (e) { /* gone */ }
@@ -1096,15 +1318,25 @@ function watchShareRequests() {
 const SIGNAL_SCREEN_SHARE = 12064;
 
 /**
- * Stops the screen bridge when sharing stops or the call ends (#91).
+ * Stops screen sharing when it ends, and shuts down Wine after lazy calls.
  * ZaloCall reports both to the renderer through the main process: sharing
  * as call-send-signal 12064 {status}, the call as call-update/callState
  * (Zalo treats every state except "free" as a running call). Without this,
  * Xvfb, the portal stream and the gst pipeline stayed up until the app quit.
  */
-function watchCallState() {
+let callStateWatching = false;
+let callRunning = false;
+function stopIdleWine(userDataDir, reason) {
+  if (getCallMode(userDataDir) !== 'lazy' || callRunning || (!wineActivated && !preparing)) return;
+  debugLog('lazy: ' + reason + ' — stopping Wine and bridges');
+  shutdown();
+}
+function watchCallState(userDataDir) {
+  if (callStateWatching) return;
   let electron;
   try { electron = require('electron'); } catch (e) { return; }
+  if (!electron.app || !electron.webContents) return;
+  callStateWatching = true;
   const stop = (why) => {
     if (!screenBridgeActive()) return;
     debugLog('screenbridge: ' + why + ' — stopping bridge');
@@ -1117,14 +1349,19 @@ function watchCallState() {
     contents.__zcallStateHooked = true;
     const send = contents.send;
     contents.send = function (channel, command, data, ...rest) {
+      let ended = false;
       if (channel === 'call-update' && command === 'callState' &&
-          data && data.state === 'free') {
-        stop('call ended');
+          data && typeof data.state === 'string') {
+        ended = callRunning && data.state === 'free';
+        callRunning = data.state !== 'free';
+        if (data.state === 'free') stop('call ended');
       } else if (channel === 'call-send-signal' && Number(command) === SIGNAL_SCREEN_SHARE &&
           data && Number(data.status) === 0) {
         stop('sharing stopped');
       }
-      return send.call(this, channel, command, data, ...rest);
+      const result = send.call(this, channel, command, data, ...rest);
+      if (ended) stopIdleWine(userDataDir, 'call ended');
+      return result;
     };
   };
   electron.webContents.getAllWebContents().forEach(hook);
@@ -1146,12 +1383,15 @@ function showBrokenWineDialog(winePath, userDataDir) {
   getElectronModules();
   if (!dialogModule) return Promise.resolve(null);
   const hint = getWineInstallHint();
+  const legacy = winePath === findLegacyDownloadedWine(userDataDir);
   const parent = BrowserWindowModule.getFocusedWindow() || BrowserWindowModule.getAllWindows()[0];
   return dialogModule.showMessageBox(parent, {
     type: 'warning',
     title: 'Zalo — Tính năng gọi điện',
-    message: 'Wine này không hỗ trợ WoW64 hoặc không khởi động được',
-    detail: hint.title + '\n\nBấm Tải Wine để tải bản Wine tương thích trong cửa sổ tiến trình.\n\n' +
+    message: legacy ? 'Runtime Wine hiện có cần được cập nhật lên WoW64 mới' :
+      'Wine này không hỗ trợ WoW64 hoặc không khởi động được',
+    detail: (legacy ? 'Runtime hiện có là bản Wine thuần hoặc dùng loader 32-bit (các bản trước chạy với WINEARCH=win32). Bản Zalo này cần runtime Wine WoW64 mới.' : hint.title) +
+      '\n\nBấm Tải Wine để tải bản Wine tương thích trong cửa sổ tiến trình.\n\n' +
       'Wine: ' + winePath,
     buttons: ['Tải Wine', 'Đóng'], defaultId: 0, cancelId: 1
   }).then(({ response }) => {
@@ -1230,11 +1470,11 @@ function needsFirstRunChoice(userDataDir) {
 }
 
 /**
- * First-run question (#80): calls or messages only. Until it is answered
- * the session runs as "lazy", so no wine starts behind the user's back.
- * Closing the window keeps the default ("auto").
+ * First-run question (#80): no Wine starts until a mode is saved.
+ * Closing without saving leaves calling paused until a mode is chosen.
  */
 function showFirstRunWindow(userDataDir) {
+  if (!awaitingFirstRunChoice) return;
   getElectronModules();
   if (!BrowserWindowModule) return;
   const { ipcMain } = require('electron');
@@ -1276,24 +1516,21 @@ function showFirstRunWindow(userDataDir) {
   </body></html>`;
   win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
 
-  let answered = false;
   const onAnswer = (_e, mode) => {
-    answered = true;
+    if (!CALL_MODES.includes(mode)) return;
     setCallMode(userDataDir, mode);
     try { win.destroy(); } catch (e) { /* closed */ }
   };
-  ipcMain.once('zcall-firstrun', onAnswer);
+  ipcMain.on('zcall-firstrun', onAnswer);
   win.on('closed', () => {
     ipcMain.removeListener('zcall-firstrun', onAnswer);
-    if (!answered) setCallMode(userDataDir, 'auto');
   });
 }
 
 function openSetupDialog({ userDataDir }) {
   getElectronModules();
   if (!BrowserWindowModule) return;
-  // One settings window: the tray, the ZaDark switch and the "calls off"
-  // notification all open it.
+  // One settings window: the tray and the ZaDark switch both open it.
   if (setupWin && !setupWin.isDestroyed()) {
     setupWin.show();
     setupWin.focus();
@@ -1402,7 +1639,7 @@ function openSetupDialog({ userDataDir }) {
   </body></html>`;
   win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
 
-  const currentWine = () => process.env.ZCALL_WINE || findWine() || findDownloadedWine(userDataDir);
+  const currentWine = () => wineCandidates(userDataDir).candidates[0] || null;
   const pushStatus = () => {
     const status = { wine: currentWine() || '', saved: readConfig(userDataDir).winePath || '' };
     try { win.webContents.send('zcall-cfg-status', status); } catch (e) { /* closed */ }
@@ -1563,6 +1800,7 @@ function openSetupDialog({ userDataDir }) {
     for (const c of CFG_CHANNELS) {
       ipcMain.removeListener(c, onIpc);
     }
+    stopIdleWine(userDataDir, 'call settings closed');
   });
 }
 
@@ -1657,12 +1895,19 @@ function killWineSession(prefix) {
 }
 
 function shutdown() {
+  callRunning = false;
+  if (shareRequestTimer) clearInterval(shareRequestTimer);
+  shareRequestTimer = null;
+  preparationGeneration++;
+  preparing = null;
+  clearTimeout(shutdownTimer);
+  shutdownTimer = null;
   if (cameraBridge) cameraBridge.close();
   cameraBridge = null;
   wineActivated = false;
-  const prefix = process.env.ZCALL_WINEPREFIX;
-  if (!prefix) return;
-  killWineSession(prefix);
+  const prefix = process.env.ZCALL_WINEPREFIX || process.env.WINEPREFIX;
+  if (prefix) killWineSession(prefix);
+  if (global.__zcallResetTransport) global.__zcallResetTransport();
   stopScreenBridge();
 }
 
