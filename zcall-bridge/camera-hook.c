@@ -7,6 +7,8 @@
 #include <objbase.h>
 #include <wchar.h>
 #include <dbt.h>
+/* DirectShow headers in MinGW-w64 11 disable deprecated _snwprintf. */
+#include <strsafe.h>
 
 static HMODULE self;
 static const GUID capture_class =
@@ -155,10 +157,12 @@ static HRESULT register_cameras(BOOL remove_only)
         if(!length || length>=sizeof(encoded) ||
            sscanf(encoded,"%lu,%lu,%lu,%lu%c",&format.width,&format.height,&format.fps_num,
                   &format.fps_den,&extra)!=4 || FAILED(source_format(&format))){result=E_INVALIDARG;break;}
-        swprintf(key_name,sizeof(key_name)/sizeof(*key_name),L"ZCALL_CAMERA_%lu_NAME",index);
+        if(FAILED(StringCchPrintfW(key_name,sizeof(key_name)/sizeof(*key_name),L"ZCALL_CAMERA_%lu_NAME",index)))
+            {result=E_FAIL;break;}
         length=GetEnvironmentVariableW(key_name,friendly,sizeof(friendly)/sizeof(*friendly));
         if(!length || length>=sizeof(friendly)/sizeof(*friendly)){result=E_INVALIDARG;break;}
-        swprintf(key_name,sizeof(key_name)/sizeof(*key_name),L"ZcallPipeWire_%lu",index);
+        if(FAILED(StringCchPrintfW(key_name,sizeof(key_name)/sizeof(*key_name),L"ZcallPipeWire_%lu",index)))
+            {result=E_FAIL;break;}
         result=IFilterMapper2_RegisterFilter(mapper,&capture_class,friendly,&moniker,
                    &CLSID_VideoInputDeviceCategory,key_name,&filter);
         if(SUCCEEDED(result))result=IMoniker_BindToStorage(moniker,NULL,NULL,&IID_IPropertyBag,(void **)&bag);

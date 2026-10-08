@@ -6,6 +6,11 @@ const fs = require('fs');
 const { spawn, spawnSync } = require('child_process');
 const readline = require('readline');
 
+function cameraName(camera) {
+  const props = camera.info.props;
+  return props['api.v4l2.cap.card'] || props['device.product.name'] || props['node.description'] || props['node.name'];
+}
+
 function nativeExecutable(name) {
   const result = spawnSync('which', [name], { encoding: 'utf8' });
   const file = (result.stdout || '').trim();
@@ -154,7 +159,7 @@ function startCameraBridge(options = {}) {
         pendingBytes = 0;
         source = spawn(gst, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
         const child = source;
-        log(`64-bit PipeWire capture: ${camera.info.props['node.description']} ${format.width}x${format.height} ${format.num}/${format.den} fps (${decoder})`);
+        log(`64-bit PipeWire capture: ${cameraName(camera)} ${format.width}x${format.height} ${format.num}/${format.den} fps (${decoder})`);
         child.stdout.on('data', chunk => {
           if (source !== child) return;
           let offset = 0;
@@ -239,7 +244,7 @@ function startCameraBridge(options = {}) {
     server.listen(0, '127.0.0.1', () => resolve({ port: server.address().port, token }));
   });
   const snapshot = () => devices.map(device => ({ index: device.index,
-    name: device.camera.info.props['node.description'] || device.camera.info.props['node.name'], format: device.format }));
+    name: cameraName(device.camera), format: device.format }));
   const monitor = watchCameras(cameras => {
     if (closed) return;
     const previous = new Map(devices.map(device => [device.camera.info.props['node.name'], device]));
