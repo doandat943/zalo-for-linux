@@ -8,7 +8,7 @@ use std::{path::PathBuf, sync::Arc, time::Instant};
 use crate::{
     config::Config, image as pixels, ipc::schema, platform::{self, Cpu},
     runtime::{Runtime, Session},
-    vault::Vault,
+    models,
 };
 struct Models {
     detector: Session,
@@ -27,8 +27,8 @@ pub struct Engine {
 impl Engine {
     pub fn new(dir: PathBuf, cfg: Config, cpu: Cpu) -> Result<Self> {
         let runtime = Runtime::load(&dir)?;
-        // Validate key and container at startup; decrypted models load on demand.
-        let _vault = Vault::load(&dir)?;
+        // Check model files at startup; sessions still load on demand.
+        models::validate(&dir)?;
         Ok(Self {
                 cfg,
                 cpu,
@@ -42,12 +42,11 @@ impl Engine {
     fn load(&mut self) -> Result<f64> {
         if self.models.is_some() { return Ok(0.); }
         let start = Instant::now();
-        let vault = Vault::load(&self.dir)?;
         let dictionary =
             {
-                let bytes = vault.decrypt(2)?;
+                let bytes = models::read(&self.dir, "dictionary.txt")?;
                 let text =
-                    std::str::from_utf8(&bytes).context("dictionary is not valid UTF-8 (check key/nonce convention)")?;
+                    std::str::from_utf8(&bytes).context("models/dictionary.txt is not valid UTF-8")?;
                 let text = text.strip_prefix('\u{feff}').unwrap_or(text);
                 let words: Vec<_> =
                     text.lines().map(|s|
@@ -58,18 +57,18 @@ impl Engine {
             };
         let detector =
             {
-                let plaintext = vault.decrypt(0)?;
-                self.runtime.session(&plaintext, &self.cfg, "detector")?
+                let bytes = models::read(&self.dir, "detector.onnx")?;
+                self.runtime.session(&bytes, &self.cfg, "detector")?
             };
         let recognizer =
             {
-                let plaintext = vault.decrypt(1)?;
-                self.runtime.session(&plaintext, &self.cfg, "recognizer")?
+                let bytes = models::read(&self.dir, "recognizer.onnx")?;
+                self.runtime.session(&bytes, &self.cfg, "recognizer")?
             };
         let classifier =
             {
-                let plaintext = vault.decrypt(3)?;
-                self.runtime.session(&plaintext, &self.cfg, "classifier")?
+                let bytes = models::read(&self.dir, "classifier.onnx")?;
+                self.runtime.session(&bytes, &self.cfg, "classifier")?
             };
         self.models =
             Some(Models { detector, recognizer, classifier, dictionary });
