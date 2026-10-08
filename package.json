@@ -9,7 +9,6 @@
     "download": "node scripts/download.js",
     "prepare-zadark": "node scripts/prepare-zadark.js",
     "prepare-app": "node scripts/prepare-app.js",
-    "setup-zcall": "node scripts/setup-zcall-bridge.js",
     "clean-unused": "node scripts/clean-unused.js",
     "build": "node scripts/build.js",
     "main": "SETUP=true BUILD=true node scripts/main.js",
@@ -63,8 +62,13 @@
         ]
       },
       {
-        "from": "zcall-bridge",
-        "to": "zcall-bridge"
+        "from": "zcall-native",
+        "to": "zcall-native",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc"
+        ]
       }
     ],
     "asarUnpack": [

@@ -39,7 +39,7 @@ if (process.platform === 'linux') {
 const screenshotPlugin = require('./plugins/screenshot');
 const launcherBadgePlugin = require('./plugins/launcher-badge');
 const userscriptsPlugin = require('./plugins/userscripts');
-const zcallBridgePlugin = require('./plugins/zcall-bridge');
+const zcall = require('./plugins/zcall');
 const trayHost = require('./plugins/tray-host');
 const waylandTitlebarPlugin = require('./plugins/wayland-titlebar');
 // Created with the main window: the screen module is not usable before 'ready'.
@@ -91,9 +91,8 @@ function showMainWindow() {
 // Launching Zalo again (dock, menu, notification) starts a second instance
 // that only hands its arguments to the running one: Zalo's
 // second-instance.js quits it during bootstrap, but 'ready' and 'before-quit'
-// still fire in it. It must not start the tray or the plugins, nor tear the
-// call engine down: zcall-bridge kills every qt-call-and-cap / wine process
-// of our prefix at launch and quit, which ended the running instance's calls.
+// still fire in it. It must not start the tray or the plugins, nor stop the
+// running instance's call engine.
 function isPrimaryInstance() {
   return app.hasSingleInstanceLock();
 }
@@ -107,11 +106,10 @@ app.on('before-quit', () => {
 });
 
 // Zalo cancels the first quit to let the renderer save its state, then quits
-// again, so 'before-quit' fires twice. Tearing the call engine down there
-// (pkill + wineserver -k, ~3 s, synchronous) ran twice and held up Zalo's own
-// quit flow. 'will-quit' fires once, after every window is closed.
+// again, so 'before-quit' fires twice; 'will-quit' fires once, after every
+// window is closed. The native call engine hangs up a call in progress.
 app.on('will-quit', () => {
-  if (isPrimaryInstance()) zcallBridgePlugin.shutdown();
+  if (isPrimaryInstance()) zcall.stop();
 });
 
 // Registered before Zalo's bootstrap, so this runs before Zalo's own
@@ -172,12 +170,6 @@ app.on('browser-window-created', (_evt, win) => {
           {
             label: 'Toggle DevTools',
             click: toggleDevTools
-          },
-          {
-            label: 'Cài đặt gọi điện…',
-            click: () => {
-              zcallBridgePlugin.openSetupDialog({ userDataDir: app.getPath('userData') });
-            }
           },
           {
             label: 'Thoát',
@@ -247,8 +239,7 @@ app.once('ready', () => {
   screenshotPlugin.register({ ipcMain });
   userscriptsPlugin.register({ app, ipcMain, BrowserWindow });
   waylandTitlebarPlugin.register({ app, ipcMain, BrowserWindow });
-  zcallBridgePlugin.launch({ userDataDir: app.getPath('userData') });
-  zcallBridgePlugin.injectSwitch({ app, userDataDir: app.getPath('userData') });
+  zcall.start({ userDataDir: app.getPath('userData') });
 });
 
 // ---------------------------------------------------------------------------
@@ -270,3 +261,4 @@ function bootstrap() {
 }
 
 bootstrap();
+zcall.configure(app); // Chromium switches (PipeWire screen capture on Wayland): after Zalo's own

@@ -33,7 +33,6 @@ async function main() {
   }
 
   await extractDMG();
-  await extractWindows();
   await extractAppAsar();
 }
 
@@ -119,93 +118,6 @@ async function extractDMG() {
   }
 }
 
-async function extractWindows() {
-  try {
-    if (!fs.existsSync(TEMP_DIR)) {
-      throw new Error('Temp directory not found. Please run "npm run download" first.');
-    }
-
-    const files = fs.readdirSync(TEMP_DIR);
-    const exeFiles = files.filter(file => /^ZaloSetup-[0-9.]+\.exe$/i.test(file));
-
-    if (exeFiles.length === 0) {
-      logger.error('No Windows installers found in:', TEMP_DIR);
-      logger.info('Please run "npm run download" first to download the Windows installer.');
-      throw new Error('No Windows installers found');
-    }
-
-    // Prepare file list with versions and metadata
-    const allFiles = exeFiles.map(file => {
-      const filePath = path.join(TEMP_DIR, file);
-      const stats = fs.statSync(filePath);
-      const version = parseVersion(file);
-
-      return {
-        name: file,
-        path: filePath,
-        version: version,
-        versionStr: version ? version.raw : 'unknown',
-        size: (stats.size / 1024 / 1024).toFixed(2),
-        mtime: stats.mtime
-      };
-    });
-
-    // Sort by version (highest first)
-    const sortedFiles = allFiles.sort((a, b) => {
-      if (a.version && b.version) return compareVersions(b.version, a.version);
-      if (a.version && !b.version) return -1;
-      if (!a.version && b.version) return 1;
-      return 0;
-    });
-
-    let selectedFile;
-    if (sortedFiles.length === 1) {
-      selectedFile = sortedFiles[0];
-      logger.info(`Auto-selecting Windows installer: ${selectedFile.name}`);
-    } else if (process.env.ZALO_WIN_VERSION) {
-      const requestedVersion = process.env.ZALO_WIN_VERSION.trim();
-      const matchingFile = sortedFiles.find(file => file.version && file.version.raw === requestedVersion);
-
-      if (matchingFile) {
-        selectedFile = matchingFile;
-        logger.info(`Auto-selecting version ${requestedVersion}: ${selectedFile.name}`);
-      } else {
-        logger.warn(`Requested version ${requestedVersion} not found in downloaded files.`);
-        selectedFile = await showInteractiveMenu(sortedFiles, 'Windows installers');
-      }
-    } else {
-      selectedFile = await showInteractiveMenu(sortedFiles, 'Windows installers');
-    }
-
-    const version = selectedFile.versionStr;
-    if (!selectedFile.version) throw new Error('Could not parse Windows installer version');
-
-    if (!commandExists('7z')) {
-      logger.error('Dependency missing: 7z is not installed. Run: sudo apt-get install p7zip-full');
-      throw new Error('7z is required for Windows installer extraction.');
-    }
-
-    const inner7z = path.join(TEMP_DIR, `Zalo-Win-${version}.7z`);
-    if (!fs.existsSync(inner7z)) {
-      logger.info(`Extracting installer payload from ${selectedFile.name}...`);
-      execSync(`7z e -y "${selectedFile.path}" '$PLUGINSDIR/app-32.7z' -oZalo-Win-extract`, {
-        cwd: TEMP_DIR, stdio: 'pipe'
-      });
-      fs.copyFileSync(path.join(TEMP_DIR, 'Zalo-Win-extract', 'app-32.7z'), inner7z);
-    }
-
-    const extractOut = path.join(TEMP_DIR, `Zalo-Win-${version}`);
-    logger.info(`Extracting plugins from ${selectedFile.name}...`);
-    execSync(`7z x -y "${inner7z}" 'Zalo-${version}/plugins/*' -o"${extractOut}"`, {
-      cwd: TEMP_DIR, stdio: 'pipe'
-    });
-    process.env.ZALO_WIN_VERSION = version;
-    logger.success('Windows plugins extracted successfully');
-  } catch (error) {
-    logger.warn('Windows extraction failed, calls unavailable: ' + error.message);
-  }
-}
-
 async function extractAppAsar() {
   const findResourcesCommand = `find "${TEMP_DIR}" -path "*/Zalo.app/Contents/Resources" -type d`;
   let resourcesPaths;
@@ -272,8 +184,9 @@ async function extractAppAsar() {
   const { main: patchZcallCallgate } = require('./patches/patch-zcall-callgate');
   await patchZcallCallgate();
 
-  const { main: patchZcallCallv2 } = require('./patches/patch-zcall-callv2');
-  await patchZcallCallv2();
+  // Calls run on the native engine (zcall-native/), no Wine.
+  const { main: patchZcallNative } = require('./patches/patch-zcall-native');
+  await patchZcallNative();
 
   // const { main: patchFixImageResizeLinux } = require('./patches/patch-fix-image-resize-linux');
   // await patchFixImageResizeLinux();
@@ -305,14 +218,18 @@ async function extractAppAsar() {
   const { main: patchAutoTheme } = require('./patches/patch-auto-theme');
   await patchAutoTheme();
 
-  const { main: patchZocrPcDist } = require('./patches/patch-zocr-pc-dist');
-  await patchZocrPcDist();
-
-  const { main: patchZocrRuntime } = require('./patches/patch-zocr-runtime');
-  await patchZocrRuntime();
+  // OCR is left out: its model vault and key come only from the Windows
+  // installer (the macOS build uses Apple Vision), and this build takes
+  // nothing from Windows.
 
   const { main: patchflatpakFileTransfer } = require('./patches/patch-flatpak-file-transfer');
   await patchflatpakFileTransfer();
+
+  // Without it Zalo would look for ZaloCall.exe / ZaloHelper.app: no calls at all.
+  const mainJs = path.join(APP_DIR, 'main-dist', 'main.js');
+  if (!fs.existsSync(mainJs) || !fs.readFileSync(mainJs, 'utf8').includes('ZCALL_ENGINE_JS')) {
+    throw new Error('native call patch missing from app/main-dist/main.js');
+  }
 }
 
 function commandExists(command) {

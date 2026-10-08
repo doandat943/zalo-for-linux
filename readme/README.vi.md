@@ -10,7 +10,7 @@ Cảm ơn **realdtn2** đã đưa ra giải pháp: [realdtn2/zalo-linux-2026](ht
 
 ## ⚠️ Lưu ý quan trọng: Các lỗi đã biết
 
-- **➖ Đã khắc phục một phần: Không gọi hoặc nhận cuộc gọi được:** Cảm ơn @collyn đã dựng Wine wrapper để giải quyết vấn đề này. Xem [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) để biết thêm chi tiết. Hiện tại tính năng gọi chưa dùng được trên aarch64, vì `zcall` của Windows chỉ hỗ trợ x86_64.
+- **✅ Gọi điện chạy native (nhánh này):** gọi thoại, gọi video, chia sẻ màn hình và gọi nhóm (âm thanh, camera, chia sẻ màn hình) chạy bằng engine gọi điện native cho Linux ([`zcall-native/`](../zcall-native/README.md), từ [zalo-linux-native](https://github.com/nct88/zalo-linux-native)): không Wine, không `ZaloCall.exe`, không thư viện 32-bit. Cần `python3`, libopus và bộ công cụ PulseAudio (Debian / Ubuntu: `sudo apt install python3 libopus0 pulseaudio-utils`); lần gọi đầu sẽ báo nếu thiếu gói. Thay cho Wine bridge của [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) (cảm ơn @collyn). Bản build không lấy gì từ bộ cài Zalo cho Windows, nên **không có OCR (nhận dạng chữ trong ảnh)**: mô hình và khóa của OCR chỉ có trong bản Windows (Zalo cho macOS dùng Apple Vision).
 
 > 💡 **Danh sách đầy đủ các lỗi đã sửa, cách khắc phục tạm thời và ghi nhận đóng góp của cộng đồng nằm trong [KNOWN_ISSUES.vi.md](./KNOWN_ISSUES.vi.md).**
 
@@ -128,7 +128,7 @@ Tìm hiểu sâu hơn về build pipeline và cách patch trong [`ARCHITECTURE.v
 
 Về các native addon (db-cross-v4, v.v.), xem [`nativelibs.vi.md`](./nativelibs.vi.md).
 
-Về `zcall` bridge, xem [`zcall-bridge/README.md`](../zcall-bridge/README.md).
+Về engine gọi điện native, xem [`zcall-native/README.md`](../zcall-native/README.md).
 
 ## 🐛 Xử lý sự cố và gỡ lỗi
 
@@ -142,7 +142,7 @@ Nếu gặp lỗi hoặc muốn xem ứng dụng đang hoạt động thế nào
 - [ARCHITECTURE.vi.md](./ARCHITECTURE.vi.md): cách build pipeline và các patch hoạt động
 - [DEVELOPMENT.vi.md](./DEVELOPMENT.vi.md): build từ mã nguồn, các script, cách thêm patch
 - [nativelibs.vi.md](./nativelibs.vi.md): các native addon (db-cross-v4, v.v.)
-- [zcall-bridge/README.md](../zcall-bridge/README.md): `zcall` bridge
+- [zcall-native/README.md](../zcall-native/README.md): engine gọi điện native
 
 ## 📄 Giấy phép
 

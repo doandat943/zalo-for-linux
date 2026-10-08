@@ -43,12 +43,15 @@ const PATCHED = 'let ae=()=>{{const e=$znode.os.release();if(e){if("linux"!==$zn
 const DEFAULTS_ORIGINAL = 'enableCall:!1,enableTag:!0,enableVideoCall:!1';
 const DEFAULTS_PATCHED = 'enableCall:!0,enableTag:!0,enableVideoCall:!0';
 
+// Renderer getOSCode() returns 8 for Linux (navigator.platform). Mobile Zalo
+// then refuses voice→video upgrade ("phiên bản Linux không hỗ trợ…").
+// Native main.js already maps LINUX→23 (macOS). Advertise Windows (7) here
+// so the phone treats this client as a desktop that can do video.
+const OSCODE_LINUX_8 = 'if(navigator.platform.indexOf("Linux")>=0)return 8';
+const OSCODE_LINUX_7 = 'if(navigator.platform.indexOf("Linux")>=0)return 7';
+
 async function main() {
-  // if we are on aa64, skip the patch (because the binary is x64 only)
-  if (process.arch === 'arm64' || process.arch === 'aarch64') {
-    logger.info('skipping callgate patch on arm64');
-    return;
-  }
+  const missing = [];
   let patchedCount = 0;
 
   for (const pattern of GLOB_TARGETS) {
@@ -61,7 +64,7 @@ async function main() {
       : null;
 
     if (!file) {
-      logger.warn('callgate target not found: ' + pattern);
+      missing.push(path.basename(pattern));
       continue;
     }
     const filePath = path.join(dir, file);
@@ -69,26 +72,37 @@ async function main() {
     let content = fs.readFileSync(filePath, 'utf8');
     let changed = false;
 
-    if (!content.includes(PATCHED) && content.includes(ORIGINAL)) {
+    if (content.includes(PATCHED)) {
+      // already applied
+    } else if (content.includes(ORIGINAL)) {
       content = content.split(ORIGINAL).join(PATCHED);
       changed = true;
+    } else {
+      missing.push(file + ': kernel gate');
+      continue;
     }
     if (content.includes(DEFAULTS_ORIGINAL)) {
       content = content.split(DEFAULTS_ORIGINAL).join(DEFAULTS_PATCHED);
       changed = true;
     }
-
-    if (!changed) {
-      logger.dim('callgate already patched: ' + file);
-      patchedCount++;
-      continue;
+    if (content.includes(OSCODE_LINUX_8)) {
+      content = content.split(OSCODE_LINUX_8).join(OSCODE_LINUX_7);
+      changed = true;
     }
-    fs.writeFileSync(filePath, content, 'utf8');
-    logger.dim('callgate patched: ' + file);
+
+    if (changed) {
+      fs.writeFileSync(filePath, content, 'utf8');
+      logger.dim('callgate patched: ' + file);
+    } else {
+      logger.dim('callgate already patched: ' + file);
+    }
     patchedCount++;
   }
 
-  if (patchedCount > 0) logger.success(`zcall callgate patched (${patchedCount} files)`);
+  if (missing.length || patchedCount === 0) {
+    throw new Error('callgate patch not applied: ' + (missing.join('; ') || 'no targets'));
+  }
+  logger.success(`zcall callgate patched (${patchedCount} files)`);
 }
 
 if (require.main === module) {

@@ -14,7 +14,7 @@ async function main() {
         process.exit(0);
       }
 
-      logger.step('Step 2: Downloading Zalo DMG and Windows installer');
+      logger.step('Step 2: Downloading Zalo DMG');
       await require('./download.js').main();
 
       logger.step('Step 3: Preparing ZaDark');
@@ -22,11 +22,6 @@ async function main() {
 
       logger.step('Step 4: Preparing Zalo app');
       await require('./prepare-app.js').main();
-
-      // Optional: call engine under Wine — failure must not break the build.
-      logger.step('Step 4.5: Setting up zcall-bridge (optional call engine)');
-      try { await require('./setup-zcall-bridge.js').main(); }
-      catch (e) { logger.warn('zcall-bridge setup failed, calls unavailable: ' + e.message); }
 
       logger.step('Step 5: Cleaning unused files');
       await require('./clean-unused.js').main();
