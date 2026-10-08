@@ -86,6 +86,11 @@ jobs:
       with:
         submodules: recursive
 
+    - name: Trust workspace repositories in container
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git config --global --add safe.directory "$GITHUB_WORKSPACE/plugins/zadark"
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
