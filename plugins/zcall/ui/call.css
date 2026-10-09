@@ -85,8 +85,9 @@ body.is-video #timer { left: 0; top: 0; width: 70px; height: 33px; line-height: 
 #peerName { display: none; }
 body.has-video:not(.has-tiles) #peerName { display: block; }
 
-/* Our camera: 170x96 in the top right corner (1-1). */
-#pip { position: absolute; top: 0; right: 0; width: 170px; height: 96px; background: #000; z-index: 2; display: none; overflow: hidden; }
+/* Our camera: 170x96 in the top right corner (1-1); in a larger window the
+   same share of the width (170 / 640), up to 320x180 so the peer stays in view. */
+#pip { position: absolute; top: 0; right: 0; width: clamp(170px, 26.5625vw, 320px); height: clamp(96px, 15vw, 180px); background: #000; z-index: 2; display: none; overflow: hidden; }
 body.has-self:not(.has-tiles) #pip { display: block; }
 #pip canvas, .tile canvas { width: 100%; height: 100%; display: block; object-fit: cover; background: #000; }
 #pip .label { height: 24px; line-height: 24px; font-size: 14px; background: none; text-shadow: 0 1px 3px #000; }
@@ -127,9 +128,14 @@ body.has-tiles #stage { display: flex; }
 #screen { left: 5px; }
 #settings { right: 5px; }
 #layout { right: 50px; }
-#screen, #layout { display: none; }
+/* Full screen: left of the grid button, in its place when that one is hidden. */
+#full { right: 95px; }
+#full img { width: 36px; height: 36px; } /* the arrows: 16 of 36, as the other tools' 16-20 */
+#screen, #layout, #full { display: none; }
 body.is-video.phase-connected #screen { display: flex; }
 body.is-video.phase-connected.has-video:not(.has-tiles) #layout { display: flex; }
+body.is-video:not(.phase-ended) #full { display: flex; }
+body:not(.phase-connected) #full, body.is-video:not(.has-video) #full, body.has-tiles #full { right: 50px; }
 
 /* --- device menu: white, rows of 30, above the bar --- */
 #menu {

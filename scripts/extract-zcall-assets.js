@@ -48,6 +48,8 @@ const REQUIRED = [
   'icon/resources/svg/sharescreen.svg',
   'icon/resources/svg/sharescreenoff.svg',
   'icon/resources/svg/grid.svg',
+  'icon/resources/offical/icn-call-expandwindow@3x.png',
+  'icon/resources/offical/icn-call-minimizewindow@3x.png',
   'icon/resources/offical/close_white.png',
   'icon/resources/offical/icn_callsetting_check.png',
   'sound/zalo_ringtone.mp3',

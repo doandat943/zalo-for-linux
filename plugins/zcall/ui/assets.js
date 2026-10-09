@@ -35,6 +35,8 @@ const ICON = {
   share: 'icon/resources/svg/sharescreen.svg',
   shareOff: 'icon/resources/svg/sharescreenoff.svg',
   grid: 'icon/resources/svg/grid.svg',
+  fullscreen: 'icon/resources/offical/icn-call-expandwindow@3x.png',
+  fullscreenOff: 'icon/resources/offical/icn-call-minimizewindow@3x.png',
   close: 'icon/resources/offical/close_white.png',
   check: 'icon/resources/offical/icn_callsetting_check.png',
 };

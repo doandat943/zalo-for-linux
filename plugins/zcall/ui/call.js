@@ -22,6 +22,17 @@ $('mute').onclick = () => { const on = !state.muted; act('log', { text: 'mute ' 
 $('layout').onclick = () => { document.body.classList.toggle('split'); };
 let compactMode = false, autoCompact = false;
 $('compactBtn').onclick = () => { autoCompact = false; ipcRenderer.send('zcall-ui-window', compactMode ? 'expand' : 'compact'); };
+// Full screen (video and group): the bar's button, F11, a double click on the picture; Esc leaves it.
+let fullScreen = false;
+const toggleFull = () => { if (state.video && !compactMode) ipcRenderer.send('zcall-ui-window', 'fullscreen'); };
+$('full').onclick = toggleFull;
+$('main').addEventListener('dblclick', (e) => { if (!e.target.closest('button')) toggleFull(); });
+ipcRenderer.on('zcall-ui-fullscreen', (_e, on) => {
+  fullScreen = !!on;
+  document.body.classList.toggle('fullscreen', fullScreen);
+  setIcon($('fullIcon'), fullScreen ? 'fullscreenOff' : 'fullscreen');
+  $('full').title = fullScreen ? 'Thoát toàn màn hình (Esc)' : 'Toàn màn hình (F11)';
+});
 ipcRenderer.on('zcall-ui-compact', (_e, on) => {
   compactMode = on;
   document.body.classList.toggle('compact', on);
@@ -644,5 +655,9 @@ document.querySelectorAll('.caret').forEach((b) => {
 });
 $('settings').onclick = (e) => { e.stopPropagation(); openMenu('all', $('settings')).catch(closeMenu); };
 document.addEventListener('click', (e) => { if (!menu.contains(e.target)) closeMenu(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menu.dataset.kind) closeMenu(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && menu.dataset.kind) closeMenu();
+  else if (e.key === 'Escape' && fullScreen) ipcRenderer.send('zcall-ui-window', 'leave-fullscreen');
+  else if (e.key === 'F11') { e.preventDefault(); toggleFull(); }
+});
 render();

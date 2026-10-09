@@ -54,6 +54,11 @@ const VIDEO_HEIGHT = 400;
 const COMPACT_WIDTH = 320; // compact: the picture (180) and the bar (50) in the screen's corner
 const COMPACT_HEIGHT = 230;
 const COMPACT_MARGIN = 16;
+// Video and group windows can be resized, maximized and made full screen;
+// below this content size the bar's tools would overlap the pills.
+const VIDEO_MIN_WIDTH = 560;
+const VIDEO_MIN_HEIGHT = 350;
+const STATE_WAIT_MS = 1000; // leaving full screen / maximized is async on Linux
 const CLOSE_DELAY_MS = 1500; // keep "Đã kết thúc" visible a moment
 
 // Zalo's own call icons, sounds and fonts (scripts/extract-zcall-assets.js):
@@ -158,8 +163,9 @@ function ensureWindow() {
     webPreferences: { contextIsolation: false, nodeIntegration: true },
   });
   win.zcallWindow = true; // main.js: closing it ends the call, it does not hide to the tray
-  win.setMenuBarVisibility(false);
-  // The size above counted the (now hidden) menu bar in: 25 px too tall without this.
+  // No menu bar at all: a hidden one comes back when full screen ends (25 px).
+  win.removeMenu();
+  // The size above counted the (now removed) menu bar in: 25 px too tall without this.
   win.setContentSize(VOICE_WIDTH, VOICE_HEIGHT);
   win.webContents.on('did-finish-load', () => {
     winReady = true;
@@ -170,7 +176,9 @@ function ensureWindow() {
     if (lastState && lastState.phase !== 'ended') send({ action: 'hangup' });
     lastState = null;
   });
-  win.on('closed', () => { win = null; winReady = false; videoMode = false; compact = null; });
+  win.on('enter-full-screen', sendFullScreen);
+  win.on('leave-full-screen', sendFullScreen);
+  win.on('closed', () => { win = null; winReady = false; videoMode = false; compact = null; compacting = false; });
   // From a file, not a data: URL: WebCodecs (video) needs a secure context.
   win.loadFile(path.join(__dirname, 'ui', 'call.html'), {
     query: { assets: ASSETS_DIR, test: process.env.ZCALL_TEST_VIDEO === '1' ? '1' : '0' },
@@ -194,6 +202,43 @@ function enterVideoMode() {
     return;
   }
   setContent(VIDEO_WIDTH, VIDEO_HEIGHT);
+  applySizing();
+}
+
+// Voice and compact: a fixed size. Video and group: the user's size, the
+// title bar's maximize button, full screen (F11, double click, the bar's button).
+function applySizing() {
+  // Linux: setResizable(false) saves the size limits and setResizable(true)
+  // puts them back, so the minimum is cleared before and set after. 1x1, not
+  // 0x0: Electron 22 ignores setMinimumSize(0, 0).
+  const free = videoMode && !compact;
+  win.setMaximizable(free); // macOS / Windows; Linux follows resizable
+  win.setFullScreenable(free);
+  if (free) {
+    win.setResizable(true);
+    const [ow, oh] = win.getSize();
+    const [cw, ch] = win.getContentSize();
+    win.setMinimumSize(VIDEO_MIN_WIDTH + ow - cw, VIDEO_MIN_HEIGHT + oh - ch);
+  } else {
+    win.setMinimumSize(1, 1);
+    win.setResizable(false);
+  }
+}
+
+function sendFullScreen() {
+  if (win && !win.isDestroyed() && winReady) win.webContents.send('zcall-ui-fullscreen', win.isFullScreen());
+}
+
+// Resolves once the window has left full screen / maximized (or after STATE_WAIT_MS).
+function leaveState(isOn, event, leave) {
+  if (!isOn()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const w = win;
+    const done = () => { clearTimeout(t); w.removeListener(event, done); resolve(); };
+    const t = setTimeout(done, STATE_WAIT_MS);
+    w.once(event, done);
+    leave();
+  });
 }
 
 // Content size at a position from getPosition(). Known issue: under X11 with
@@ -204,19 +249,34 @@ function enterVideoMode() {
 function setBounds(b) {
   win.setResizable(true);
   win.setContentSize(b.width, b.height);
-  win.setResizable(false);
+  win.setResizable(videoMode && !compact);
   win.setPosition(b.x, b.y);
 }
 
 // Compact: a small tile in the bottom-right corner of the window's screen,
 // so it hides little of a shared screen; expanding restores the bounds.
-// compact: { x, y } outer position, { width, height } content size, of the normal window.
-function setCompact(on) {
-  if (!win || win.isDestroyed() || !!compact === on) return;
+// A full screen or maximized window leaves that state first and gets it back
+// on expand.
+// compact: { x, y } outer position, { width, height } content size, of the
+// normal window; full / max: its state before.
+let compacting = false;
+let compactJob = Promise.resolve(); // the last compact / expand, awaited before the screen picker
+async function setCompact(on) {
+  if (!win || win.isDestroyed() || compacting || !!compact === on) return;
   if (on) {
+    compacting = true;
+    const full = win.isFullScreen();
+    const max = win.isMaximized();
+    try {
+      await leaveState(() => win.isFullScreen(), 'leave-full-screen', () => win.setFullScreen(false));
+      if (win.isDestroyed()) return;
+      await leaveState(() => win.isMaximized(), 'unmaximize', () => win.unmaximize());
+      if (win.isDestroyed()) return;
+    } finally { compacting = false; }
     const [x, y] = win.getPosition();
     const [width, height] = win.getContentSize();
-    compact = { x, y, width, height };
+    compact = { x, y, width, height, full, max };
+    applySizing();
     const wa = require('electron').screen.getDisplayMatching(win.getBounds()).workArea;
     win.setResizable(true);
     win.setContentSize(COMPACT_WIDTH, COMPACT_HEIGHT);
@@ -224,10 +284,15 @@ function setCompact(on) {
     const [ow, oh] = win.getSize();
     win.setPosition(wa.x + wa.width - ow - COMPACT_MARGIN, wa.y + wa.height - oh - COMPACT_MARGIN);
   } else {
-    setBounds(compact);
+    const before = compact;
     compact = null;
+    setBounds(before);
+    applySizing();
+    if (before.max) win.maximize();
+    if (before.full) win.setFullScreen(true);
   }
   win.webContents.send('zcall-ui-compact', on);
+  win.focus();
 }
 
 function onEngineMessage(m) {
@@ -319,6 +384,7 @@ function start() {
   // The screen to share. With PipeWire capture (Wayland, see zcall.configure)
   // this asks the desktop's portal, which lets the user pick one.
   ipcMain.handle('zcall-ui-screen-source', async () => {
+    await compactJob; // out of full screen and compact before the portal's dialog opens
     const { desktopCapturer } = require('electron');
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
     const s = sources.find((x) => x.id.startsWith('screen:')) || sources[0];
@@ -329,7 +395,15 @@ function start() {
   // the focused window, so above Zalo's main window (see ui/call.js).
   ipcMain.on('zcall-ui-window', (_e, op) => {
     if (!win || win.isDestroyed()) return;
-    if (op === 'compact' || op === 'expand') { win.restore(); win.show(); setCompact(op === 'compact'); win.focus(); }
+    if (op === 'compact' || op === 'expand') {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      compactJob = setCompact(op === 'compact').catch((e) => console.error('[zcall-window] compact:', e.message));
+    } else if (op === 'fullscreen') { // toggle, video / group only
+      if (videoMode && !compact && !compacting) win.setFullScreen(!win.isFullScreen());
+    } else if (op === 'leave-fullscreen') {
+      if (win.isFullScreen()) win.setFullScreen(false);
+    }
   });
   // The notice's answer: accept, maybe with the camera off; the call window opens with the next state.
   ipcMain.on('zcall-incoming-answer', (_e, opts) => {
