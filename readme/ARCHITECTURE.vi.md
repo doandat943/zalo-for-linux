@@ -43,7 +43,7 @@ zalo-for-linux/
 │   ├── userscripts # Trình quản lý userscript
 │   ├── window-state # Kiểm tra trạng thái cửa sổ để tránh cửa sổ bị biến mất
 │   ├── zadark # Tiện ích mở rộng cho chế độ tối, tính năng riêng tư và các chức năng bổ sung
-│   └── zcall-bridge # Giao diện để điều khiển zcall wine bridge
+│   └── zcall # Trình khởi động engine, cửa sổ gọi (window.js + ui/call.*) và khung báo cuộc gọi đến (incoming.js + ui/incoming.*), theo bố cục Zalo macOS
 ├── README.md # Thông tin về dự án
 ├── sample # Hình ảnh dùng cho hướng dẫn
 ├── scripts
@@ -55,14 +55,12 @@ zalo-for-linux/
 │   ├── patches # Các script patch riêng lẻ
 │   ├── prepare-app.js # Giải nén app.asar + áp dụng các patch
 │   ├── prepare-zadark.js # Build plugin ZaDark
-│   ├── setup-zcall-bridge.js # Build zcall bridge và chuẩn bị module zcall
 │   └── utils # Các tiện ích
 │       └── logger.js # File ghi log
-└── zcall-bridge # Thư mục mã nguồn của bridge
-│   ├── pipebridge.c # Bridge dùng named pipe để zcall giao tiếp với Zalo
-│   ├── README.md # Thông tin về bridge
-│   ├── screenbridge.py # Bridge chia sẻ màn hình trên Wayland
-│   └── streamproxy.c # Thư viện được nạp sẵn (preload) để bật tính năng chia sẻ màn hình
+└── zcall-native # Engine gọi điện native (không Wine): tín hiệu, media ZRTP / SRTP, âm thanh Opus
+│   ├── native-engine # zcall-native.js (do main process đã patch khởi chạy), audio-io.py
+│   ├── README.md # Cách engine hoạt động
+│   └── tools # Tiện ích Python dùng chung (phát Opus)
 ├── app/                     # Ứng dụng đã giải nén (bị gitignore, được tạo lại khi build)
 ├── temp/                    # Bộ nhớ đệm cho file DMG đã tải
 └── dist/                    # Kết quả build (AppImage, v.v.)

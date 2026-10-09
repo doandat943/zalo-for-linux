@@ -10,7 +10,7 @@ Cảm ơn **realdtn2** đã đưa ra giải pháp: [realdtn2/zalo-linux-2026](ht
 
 ## ⚠️ Lưu ý quan trọng: Các lỗi đã biết
 
-- **➖ Đã khắc phục một phần: Không gọi hoặc nhận cuộc gọi được:** Cảm ơn @collyn đã dựng Wine wrapper để giải quyết vấn đề này. Xem [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) để biết thêm chi tiết. Hiện tại tính năng gọi chưa dùng được trên aarch64, vì `zcall` của Windows chỉ hỗ trợ x86_64.
+- **✅ Gọi điện chạy native:** gọi thoại, gọi video, chia sẻ màn hình và gọi nhóm (âm thanh, camera, chia sẻ màn hình) chạy bằng engine gọi điện native cho Linux ([`zcall-native/`](../zcall-native/README.md), từ [zalo-linux-native](https://github.com/nct88/zalo-linux-native)), với cửa sổ gọi theo bố cục Zalo macOS, dùng biểu tượng và âm thanh gốc (lấy từ DMG macOS lúc build), cuộc gọi đến hiện khung báo ở góc màn hình: không Wine, không `ZaloCall.exe`, không thư viện 32-bit. Cần `python3`, libopus và bộ công cụ PulseAudio (Debian / Ubuntu: `sudo apt install python3 libopus0 pulseaudio-utils`); lần gọi đầu sẽ báo nếu thiếu gói. Không chuyển được từ gọi thoại sang video giữa cuộc gọi, giống Zalo macOS và Windows (chỉ điện thoại với điện thoại). Thay cho Wine bridge của [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) (cảm ơn @collyn).
 
 > 💡 **Danh sách đầy đủ các lỗi đã sửa, cách khắc phục tạm thời và ghi nhận đóng góp của cộng đồng nằm trong [KNOWN_ISSUES.vi.md](./KNOWN_ISSUES.vi.md).**
 
@@ -88,13 +88,13 @@ Yêu cầu:
 - Node.js và npm
 - 7z (p7zip-full) để giải nén ứng dụng macOS trong bước setup
 - C++ build tools (cho các native addon): `build-essential`, `libssl-dev`, `liblzma-dev`
-- `zcall` build tools: `gcc-mingw-w64-i686` `gcc-multilib` `libc6-dev-i386` `libx11-dev` `libxcb1-dev` `libx11-dev:i386` `libxcb1-dev:i386` `libxext-dev:i386`
+- Rust toolchain, `clang`, `libclang-dev`, `llvm` (cho các native addon viết bằng Rust)
+- Để gọi điện bằng bản đã build: `python3`, `libopus0`, `pulseaudio-utils` (không cần biên dịch gì, không Wine)
 
 Trên Debian/Ubuntu:
 
 ```bash
-sudo dpkg --add-architecture i386
-sudo apt update && sudo apt install -y liblzma-dev p7zip-full gcc-mingw-w64-i686 gcc gcc-multilib libc6-dev-i386 libx11-dev libxcb1-dev libx11-dev:i386 libxcb1-dev:i386 libxext-dev:i386 zsync
+sudo apt update && sudo apt install -y build-essential liblzma-dev p7zip-full gcc g++ clang libclang-dev llvm libx11-dev libxcb1-dev libxext-dev zsync
 ```
 
 Các bước:
@@ -128,7 +128,7 @@ Tìm hiểu sâu hơn về build pipeline và cách patch trong [`ARCHITECTURE.v
 
 Về các native addon (db-cross-v4, v.v.), xem [`nativelibs.vi.md`](./nativelibs.vi.md).
 
-Về `zcall` bridge, xem [`zcall-bridge/README.md`](../zcall-bridge/README.md).
+Về engine gọi điện native, xem [`zcall-native/README.md`](../zcall-native/README.md).
 
 ## 🐛 Xử lý sự cố và gỡ lỗi
 
@@ -142,7 +142,7 @@ Nếu gặp lỗi hoặc muốn xem ứng dụng đang hoạt động thế nào
 - [ARCHITECTURE.vi.md](./ARCHITECTURE.vi.md): cách build pipeline và các patch hoạt động
 - [DEVELOPMENT.vi.md](./DEVELOPMENT.vi.md): build từ mã nguồn, các script, cách thêm patch
 - [nativelibs.vi.md](./nativelibs.vi.md): các native addon (db-cross-v4, v.v.)
-- [zcall-bridge/README.md](../zcall-bridge/README.md): `zcall` bridge
+- [zcall-native/README.md](../zcall-native/README.md): engine gọi điện native
 
 ## 📄 Giấy phép
 
