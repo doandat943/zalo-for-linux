@@ -144,6 +144,10 @@ ipcRenderer.on('zcall-ui-state', (_e, s) => {
     if (pendingScreen) { pendingScreen.stop(); pendingScreen = null; }
   }
   else if (state.video && camOn && !local && !sharing) startLocal();
+  else if (local && local.kind === 'camera' && !sharing && local.big !== undefined && local.big !== wantBigCapture()) {
+    act('log', { text: 'camera capture size changes: restart' });
+    stopLocal(); startLocal();
+  }
   else if (state.video && !camOn && before !== 'connected') act('camera', { on: false });
   sounds(before);
   render();
@@ -152,8 +156,9 @@ ipcRenderer.on('zcall-ui-state', (_e, s) => {
 // --- what we send (camera or screen): capture, preview, H.264 encode, frames to the engine ---
 const self = $('self'); const sg = self.getContext('2d');
 // local: the capture running, { kind: 'camera' | 'screen', stop }.
-let camOn = true, noCamera = false, sharing = false, local = null, enc = null, nFrames = 0, lastAt = 0, encErrLogged = false;
+let camOn = true, noCamera = false, sharing = false, local = null, enc = null, nFrames = 0, nextDue = 0, encErrLogged = false;
 let camPref = null, curCamId = ''; // saved choice { id, label }; the camera in use
+let capFps = 0; // frame rate the camera says it delivers (0: unknown)
 // Encoder settings per source. Level 3.0 (avc1.42E01E) holds 640 px: a
 // 1920x1080 camera (Iriun) encoded as is never shows on the phone. The
 // screen needs level 4.0 (avc1.42E028) for 1280 px at any aspect ratio.
@@ -161,8 +166,8 @@ const PROFILES = {
   camera: { fps: 15, maxSide: 640, bitrate: 500000, codec: 'avc1.42E01E' },
   screen: { fps: 10, maxSide: 1280, bitrate: 1500000, codec: 'avc1.42E028' }
 };
-const KEY_MS = 2000;
-let forceKey = true, lastKeyAt = 0; // key frame now (engine asked: start, PLI) / every KEY_MS
+const KEY_MS = 2000; // screen, and the camera until the engine's profile came
+let forceKey = true, lastKeyAt = 0; // key frame now (engine asked: start, PLI) / every keyMs
 let scaler = null, scalerG = null;
 // One object per layer-0 key, so the encoder is not reconfigured every frame.
 let groupProfile = null, groupKey = '';
@@ -189,7 +194,7 @@ function sendProfile() {
   const key = w + 'x' + h + '@' + fps + '/' + bitrate + '/' + keyMs + '/' + codec;
   if (groupProfile && groupKey === key) return groupProfile;
   groupKey = key;
-  groupProfile = { fps: fps, width: w, height: h, bitrate: bitrate, keyMs: keyMs, codec: codec, exact: true };
+  groupProfile = { fps: fps, width: w, height: h, bitrate: bitrate, keyMs: keyMs, codec: codec, exact: true, rung: e.rung || 0 };
   return groupProfile;
 }
 $('cam').onclick = () => {
@@ -208,12 +213,18 @@ function b64(bytes) {
 // skipped for the frame rate, skipped with the encoder queue full, handed to the
 // encoder, chunks out (key), queue size and encoder state now. Group camera froze
 // after ~3 s on 2026-10-08 (14 frames in 11 s left the engine): this shows where.
-const tx = { got: 0, rep: 0, rate: 0, full: 0, enc: 0, out: 0, key: 0, at: performance.now() };
+// Also the bytes out (kbps the encoder really gives against the bitrate asked) and why
+// key frames were made: start (new encoder / call start), asked (the phone's PLI),
+// timer (keyMs).
+const tx = { got: 0, rep: 0, rate: 0, full: 0, enc: 0, out: 0, key: 0, bytes: 0, kStart: 0, kAsked: 0, kTimer: 0, at: performance.now() };
 function txReport(now) {
   if (now - tx.at < 5000) return;
+  const P = enc && enc.profile;
   act('log', { text: 'send ' + (sharing ? 'screen' : 'camera') + ' 5s: got ' + tx.got + ', repeated ' + tx.rep + ', rate-skip ' + tx.rate + ', queue-skip ' + tx.full +
-    ', encoded ' + tx.enc + ', out ' + tx.out + ' (' + tx.key + ' key), queue ' + (enc ? enc.encodeQueueSize : '-') + ', encoder ' + (enc ? enc.state : 'none') });
-  tx.got = tx.rep = tx.rate = tx.full = tx.enc = tx.out = tx.key = 0; tx.at = now;
+    ', encoded ' + tx.enc + ', out ' + tx.out + ' (' + tx.key + ' key: start ' + tx.kStart + ', asked ' + tx.kAsked + ', timer ' + tx.kTimer + '), ' +
+    Math.round(tx.bytes * 8 / ((now - tx.at) / 1000) / 1000) + ' kbps, queue ' + (enc ? enc.encodeQueueSize : '-') + ', encoder ' + (enc ? enc.state : 'none') +
+    (P ? ' ' + enc.w + 'x' + enc.h + '@' + P.fps + ' ' + Math.round(P.bitrate / 1000) + 'k' + (P.rung ? ' rung ' + P.rung : '') : '') });
+  tx.got = tx.rep = tx.rate = tx.full = tx.enc = tx.out = tx.key = tx.bytes = tx.kStart = tx.kAsked = tx.kTimer = 0; tx.at = now;
 }
 // Also when the capture gives nothing at all (then 'got 0' says so).
 setInterval(() => { if (local) txReport(performance.now()); }, 5000);
@@ -240,7 +251,7 @@ setInterval(() => {
   // A fresh timestamp: the encoder is given frames in increasing time.
   try { f = new VideoFrame(held, { timestamp: Math.round(now * 1000) }); } catch (_) { dropHeld(); return; }
   tx.rep++;
-  lastAt = 0; // the frame-rate gate is for the capture, not for these
+  nextDue = 0; // the frame-rate gate is for the capture, not for these
   encodeFrame(f, true);
 }, 100);
 function encodeFrame(frame, repeat) {
@@ -253,8 +264,12 @@ function encodeFrame(frame, repeat) {
   try {
     const P = sendProfile();
     const now = performance.now();
-    if (now - lastAt < 1000 / P.fps - 5) { tx.rate++; return; }
-    lastAt = now;
+    // Frame-rate gate on a schedule, not on the gap to the last frame: a 15 fps
+    // camera has frames 55-75 ms apart, and "at least 61 ms since the last one"
+    // let only 44 of its 75 frames in 5 s through (8.8 fps sent, logs 2026-10-08/09).
+    const iv = 1000 / P.fps;
+    if (now + iv * 0.5 < nextDue) { tx.rate++; return; }
+    nextDue = Math.max(nextDue + iv, now - iv * 0.5);
     let w, h, src = current;
     if (P.exact) {
       // Exactly the announced layer, so the SPS matches sub 12. The camera fills it,
@@ -292,7 +307,7 @@ function encodeFrame(frame, repeat) {
       enc = new VideoEncoder({
         output: (chunk) => {
           const data = new Uint8Array(chunk.byteLength); chunk.copyTo(data);
-          tx.out++; if (chunk.type === 'key') tx.key++;
+          tx.out++; tx.bytes += chunk.byteLength; if (chunk.type === 'key') tx.key++;
           act('videoFrame', { key: chunk.type === 'key', data: b64(data), screen: P === PROFILES.screen || !!P.screen, w: w, h: h });
         },
         error: (err) => {
@@ -300,20 +315,30 @@ function encodeFrame(frame, repeat) {
           enc = null;
         },
       });
-      const cfg = { codec: P.codec, width: w, height: h, bitrate: P.bitrate, framerate: P.fps, avc: { format: 'annexb' }, latencyMode: 'realtime' };
+      // OpenH264 spends bitrate / framerate per frame: a 15 fps camera on a 24 fps rung
+      // got 676 of 1100 kbps ("Actual input framerate 15 is different from framerate
+      // in setting 24"). Tell it the rate it really gets.
+      const fr = capFps > 0 && !sharing ? Math.min(P.fps, capFps) : P.fps;
+      const cfg = { codec: P.codec, width: w, height: h, bitrate: P.bitrate, framerate: fr, avc: { format: 'annexb' }, latencyMode: 'realtime' };
       if (P.exact) cfg.hardwareAcceleration = 'prefer-software';
       enc.configure(cfg);
+      act('log', { text: 'encoder ' + P.codec + ' ' + w + 'x' + h + '@' + fr + ' ' + Math.round(P.bitrate / 1000) + ' kbps, key every ' + (P.keyMs || KEY_MS) + ' ms' +
+        (P.rung ? ', rung ' + P.rung : '') + (cfg.hardwareAcceleration ? ', ' + cfg.hardwareAcceleration : '') });
       enc.w = w; enc.h = h; enc.profile = P; nFrames = 0;
     }
-    if (self.width !== w || self.height !== h) { self.width = w; self.height = h; }
+    if (self.width !== w || self.height !== h) { self.width = w; self.height = h; if (selfTile.parentNode) layoutTiles(); }
     sg.drawImage(src, 0, 0);
     document.body.classList.add('has-self');
     if (enc.encodeQueueSize >= 3) tx.full++;
     if (enc.encodeQueueSize < 3) {
       tx.enc++;
       const keyEvery = P.keyMs || KEY_MS;
-      const key = forceKey || nFrames++ === 0 || now - lastKeyAt >= keyEvery;
-      if (key) { forceKey = false; lastKeyAt = now; }
+      const first = nFrames++ === 0;
+      const key = forceKey || first || now - lastKeyAt >= keyEvery;
+      if (key) {
+        if (first) tx.kStart++; else if (forceKey) tx.kAsked++; else tx.kTimer++;
+        forceKey = false; lastKeyAt = now;
+      }
       enc.encode(current, { keyFrame: key });
     }
   } catch (err) {
@@ -345,6 +370,10 @@ function runTrack(track, cap, onFirst, onEnd) {
     if (alive && onEnd) onEnd();
   })();
 }
+// 1-1 rungs above 640 px and group layers above 640 px are cut from a 1280x720 capture.
+function wantBigCapture() {
+  return !!(cameraEncode && (cameraEncode.width > 640 || cameraEncode.captureBig));
+}
 async function startLocal() {
   if (local) return;
   local = { kind: 'camera', stop: () => {} };
@@ -354,21 +383,27 @@ async function startLocal() {
     // scaled in the canvas; ideal 480x240 froze the camera on this PC.
     // A group layer larger than 640 px (720x360 by default) is cut from a 1280x720
     // capture, so it keeps its detail; 1-1 stays at 640x360.
-    const big = cameraEncode && cameraEncode.width > 640;
-    const want = { width: { ideal: big ? 1280 : 640 }, height: { ideal: big ? 720 : 360 }, frameRate: { ideal: PROFILES.camera.fps } };
+    const big = wantBigCapture();
+    mine.big = big;
+    const fps = cameraEncode && cameraEncode.fps > 0 ? cameraEncode.fps : PROFILES.camera.fps;
+    const want = { width: { ideal: big ? 1280 : 640 }, height: { ideal: big ? 720 : 360 }, frameRate: { ideal: Math.max(fps, PROFILES.camera.fps) } };
     const camId = await chosenCamera();
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ video: camId ? Object.assign({ deviceId: { exact: camId } }, want) : want, audio: false }); }
     catch (e) { if (!camId) throw e; stream = await navigator.mediaDevices.getUserMedia({ video: want, audio: false }); }
     if (local !== mine) { stream.getTracks().forEach((t) => t.stop()); return; }
     const track = stream.getVideoTracks()[0];
-    curCamId = (track.getSettings && track.getSettings().deviceId) || '';
+    const st = (track.getSettings && track.getSettings()) || {};
+    curCamId = st.deviceId || '';
+    capFps = st.frameRate > 0 ? Math.round(st.frameRate) : 0;
+    act('log', { text: 'camera capture ' + st.width + 'x' + st.height + '@' + st.frameRate + ' (asked ' + want.width.ideal + 'x' + want.height.ideal + '@' + want.frameRate.ideal + ')' });
     runTrack(track, local);
     act('camera', { on: true });
   } catch (e) {
     if (!TEST_PATTERN) { noCamera = true; camOn = false; local = null; act('camera', { on: false }); render(); return; }
     // No camera: a moving test pattern (ZCALL_TEST_VIDEO=1).
     const c = new OffscreenCanvas(360, 640); const g2 = c.getContext('2d'); let i = 0;
+    capFps = PROFILES.camera.fps;
     const timer = setInterval(() => {
       i++;
       g2.fillStyle = 'hsl(' + (i * 4 % 360) + ',70%,45%)'; g2.fillRect(0, 0, 360, 640);
@@ -462,7 +497,7 @@ function stopLocal() {
 // picture stays up.
 const canvas = $('video'); const g = canvas.getContext('2d');
 let dec = null, decCodec = null, ts = 0;
-let decErrLogged = false, shown = 0, shownSince = 0, shownTotal = 0;
+let decErrLogged = false, shown = 0, shownSince = 0, shownTotal = 0, rxBytes = 0;
 const tiles = new Map();
 // 1-1: the decoder broke (or a decode call threw): say so, and ask the phone for a key frame
 // (the engine sends the PLI), instead of staying on the last picture until the next one.
@@ -503,8 +538,9 @@ function newDecoder(codec) {
       const now = Date.now(); shown++; shownTotal++;
       if (!shownSince) shownSince = now;
       if (now - shownSince >= 5000) {
-        act('log', { text: 'video shown ' + (shown * 1000 / (now - shownSince)).toFixed(1) + ' fps, ' + f.displayWidth + 'x' + f.displayHeight + ', ' + shownTotal + ' frames' });
-        shown = 0; shownSince = now;
+        act('log', { text: 'video shown ' + (shown * 1000 / (now - shownSince)).toFixed(1) + ' fps, ' + f.displayWidth + 'x' + f.displayHeight + ', ' + shownTotal + ' frames, ' +
+          Math.round(rxBytes * 8 / ((now - shownSince) / 1000) / 1000) + ' kbps in, decode queue ' + (dec ? dec.decodeQueueSize : '-') + ', shown at ' + canvas.clientWidth + 'x' + canvas.clientHeight + ' css px' });
+        shown = 0; shownSince = now; rxBytes = 0;
       }
       f.close();
       if (!state.peerCamOff) document.body.classList.add('has-video');
@@ -522,7 +558,7 @@ function showMember(m) {
     box.className = 'tile';
     box.appendChild(c);
     $('stage').appendChild(box);
-    t = { box, canvas: c, g: c.getContext('2d'), dec: null, codec: null, ts: 0, logged: false, errLogged: false, sentW: 0, ro: null, rt: 0 };
+    t = { box, canvas: c, g: c.getContext('2d'), dec: null, codec: null, ts: 0, errLogged: false, sentW: 0, ro: null, rt: 0 };
     tiles.set(m.src, t);
     // The engine asks the server for the layer that fits this tile (macOS does the same
     // from the tile's render width): tell it the width in pixels, and again when it changes.
@@ -545,14 +581,15 @@ function showMember(m) {
       output: (f) => {
         if (t.canvas.width !== f.displayWidth || t.canvas.height !== f.displayHeight) {
           t.canvas.width = f.displayWidth; t.canvas.height = f.displayHeight;
-          if (!t.logged) { t.logged = true; act('log', { text: 'video ' + src + ' ' + f.displayWidth + 'x' + f.displayHeight }); }
+          act('log', { text: 'video ' + src + ' ' + f.displayWidth + 'x' + f.displayHeight + ' (tile ' + t.sentW + ' px)' });
         }
         t.g.drawImage(f, 0, 0);
         const now = Date.now(); t.shown = (t.shown || 0) + 1;
         if (!t.shownSince) t.shownSince = now;
         if (now - t.shownSince >= 5000) {
-          act('log', { text: 'video shown ' + src + ' ' + (t.shown * 1000 / (now - t.shownSince)).toFixed(1) + ' fps, ' + f.displayWidth + 'x' + f.displayHeight });
-          t.shown = 0; t.shownSince = now;
+          act('log', { text: 'video shown ' + src + ' ' + (t.shown * 1000 / (now - t.shownSince)).toFixed(1) + ' fps, ' + f.displayWidth + 'x' + f.displayHeight +
+            ', ' + Math.round((t.rxBytes || 0) * 8 / ((now - t.shownSince) / 1000) / 1000) + ' kbps in, tile ' + t.sentW + ' px' });
+          t.shown = 0; t.shownSince = now; t.rxBytes = 0;
         }
         f.close();
         document.body.classList.add('has-video', 'has-tiles');
@@ -564,6 +601,7 @@ function showMember(m) {
     });
     t.dec.configure({ codec: m.codec, optimizeForLatency: true, hardwareAcceleration: 'prefer-software' });
   }
+  t.rxBytes = (t.rxBytes || 0) + Math.floor(m.data.length * 3 / 4);
   if (!t.dec || t.dec.state !== 'configured') return;
   try { t.dec.decode(new EncodedVideoChunk({ type: m.key ? 'key' : 'delta', timestamp: t.ts += 66666, data: annexB(m) })); }
   catch (e) {
@@ -574,6 +612,7 @@ function showMember(m) {
 ipcRenderer.on('zcall-ui-video', (_e, m) => {
   if (state.phase !== 'connected') return;
   if (m.src) { showMember(m); return; }
+  rxBytes += Math.floor(m.data.length * 3 / 4);
   if (m.key && (!dec || dec.state === 'closed' || m.codec !== decCodec)) newDecoder(m.codec);
   if (!dec || dec.state !== 'configured') return;
   try { dec.decode(new EncodedVideoChunk({ type: m.key ? 'key' : 'delta', timestamp: ts += 66666, data: annexB(m) })); } catch (e) { decoderBroke((e && e.message) || String(e)); }

@@ -22,13 +22,17 @@
  *
  * phase: outgoing | incoming | connecting | connected | ended.
  *
- * Video: the 1-1 camera is encoded with WebCodecs (H.264 baseline, 15 fps, at
- * most 640 px, key frame every 2 s or when the engine asks). A group call
- * sends cameraEncode (layer 0): that exact width, height, bitrate, fps and
- * key interval, letterboxed in software. Capture stays 640x360; asking the
- * device for 480x240 stalled the preview. With ZCALL_TEST_VIDEO=1 and no
- * camera, a moving test pattern is sent instead. Sharing the screen replaces
- * the camera (10 fps, at most 1280 px) and ignores cameraEncode.
+ * Video: the camera is encoded with WebCodecs (H.264 baseline, software) at the
+ * engine's cameraEncode: in a 1-1 call the rung of the server's ladder that the
+ * engine picks from the phone's loss reports (send-rate.js: 360p 20 fps 500 kbps
+ * at first, up to 720p 24 fps 1100 kbps), key frames at the start, when the
+ * engine asks (the phone's PLI) and every keyMs (10 s); in a group call layer 0
+ * of the SFU table. That exact size is cut from the camera's centre; the camera
+ * is captured at 1280x720 when the size is above 640 px, else 640x360 (asking
+ * the device for 480x240 stalled the preview). Without cameraEncode: 15 fps, at
+ * most 640 px, a key frame every 2 s. With ZCALL_TEST_VIDEO=1 and no camera, a
+ * moving test pattern is sent instead. Sharing the screen replaces the camera
+ * (10 fps, at most 1280 px) and ignores cameraEncode.
  *
  * Devices: the ▲ on the micro pill (micro and speakers), on the camera pill,
  * or the gear (all of them) picks the device, also during a call. Microphones and speakers come from PipeWire (pactl), cameras from

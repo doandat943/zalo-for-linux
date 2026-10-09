@@ -115,6 +115,10 @@ class EngineCore {
       media.on('memberAudio', (uid) => this._groupMemberIn(uid));
       media.on('video', (pkt) => this._onVideoPacket(pkt));
       media.on('keyframe', (why) => this._requestKeyFrame(why));
+      // 1-1: the rung of the server's ladder our camera is encoded at (send-rate.js).
+      media.on('sendProfile', (p) => {
+        if (this.call && !this.call.group && this.ui.setCameraEncode) this.ui.setCameraEncode(p);
+      });
     }
   }
 
@@ -468,7 +472,14 @@ class EngineCore {
     v.frames++;
     if (now - v.since < 5000) return;
     const s = v.asm.stats;
-    this.log(`video rx member ${uid}: ${(v.frames * 1000 / (now - v.since)).toFixed(1)} fps, ${s.frames} frames, ${s.keys} key, ${s.gaps} gaps, ${s.dropped} dropped, ${v.noCodec} without codec`);
+    // NAL bytes of the period by type (14/15/20: SVC units, dropped before decoding)
+    // and the sizes of the last SPS / subset SPS: tells whether a bigger layer
+    // is in the stream as SVC (and thrown away) or not sent at all.
+    const nal = Object.entries(v.asm.nalBytes).map(([t, n]) => `${t}:${Math.round(n / 1024)}k`).join(' ');
+    v.asm.nalBytes = {};
+    const sps = v.asm.spsSize;
+    this.log(`video rx member ${uid}: ${(v.frames * 1000 / (now - v.since)).toFixed(1)} fps, ${s.frames} frames, ${s.keys} key, ${s.gaps} gaps, ${s.dropped} dropped, ${v.noCodec} without codec; ` +
+      `nal ${nal || '-'}; sps ${sps[7] || '-'}, subset sps ${sps[15] || '-'}` + (this.media && this.media.vidAsked ? `; asked quality 0x${(this.media.vidAsked.get(uid >>> 0) ?? 0xff).toString(16)}` : ''));
     v.since = now; v.frames = 0;
   }
 

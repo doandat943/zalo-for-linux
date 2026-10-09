@@ -41,6 +41,12 @@ class VideoAssembler {
     this.sps = null; // group: last SPS / PPS, prepended to a key that lacks them
     this.pps = null;
     this.stats = { frames: 0, dropped: 0, keys: 0, gaps: 0 };
+    // Group diagnostics (2026-10-09: members arrive as 180x320 even when a
+    // bigger layer is asked for): bytes per NAL type since the last read
+    // (14/15/20 = the SVC units that are dropped), and the picture size of the
+    // last SPS (7) and subset SPS (15, an SVC enhancement layer).
+    this.nalBytes = {};
+    this.spsSize = { 7: null, 15: null };
   }
 
   push({ ts, pt, marker, payload, seq, roc = 0 }) {
@@ -71,6 +77,14 @@ class VideoAssembler {
     let key = f.key;
     if (this.group) {
       const units = nalUnits(data);
+      for (const u of units) {
+        const t = u[0] & 0x1f;
+        this.nalBytes[t] = (this.nalBytes[t] || 0) + u.length;
+        if (t === 7 || t === 15) {
+          const d = spsSize(u);
+          if (d) this.spsSize[t] = d.width + 'x' + d.height;
+        }
+      }
       key = units.some((u) => (u[0] & 0x1f) === 7 || (u[0] & 0x1f) === 5);
       const kept = units.filter((u) => !SVC_NALS.has(u[0] & 0x1f));
       if (!kept.length) { this.pending.delete(ts); this.stats.dropped++; return; }
@@ -156,6 +170,51 @@ function nalUnits(annexB) {
   }).filter((u) => u.length);
 }
 
+// Picture size coded in an SPS (NAL 7) or subset SPS (NAL 15) unit (with its
+// one-byte NAL header), or null. H.264 7.3.2.1.1, cropping applied (4:2:0).
+function spsSize(nal) {
+  const b = [];
+  for (let i = 1; i < nal.length; i++) {
+    if (i >= 3 && nal[i] === 3 && nal[i - 1] === 0 && nal[i - 2] === 0) continue; // emulation prevention
+    b.push(nal[i]);
+  }
+  let pos = 0;
+  const bit = () => { if (pos >= b.length * 8) throw new Error('eof'); const v = (b[pos >> 3] >> (7 - (pos & 7))) & 1; pos++; return v; };
+  const bits = (n) => { let v = 0; for (let i = 0; i < n; i++) v = v * 2 + bit(); return v; };
+  const ue = () => { let z = 0; while (!bit()) { if (++z > 31) throw new Error('ue'); } return bits(z) + (2 ** z - 1); };
+  const se = () => { const k = ue(); return k & 1 ? (k + 1) / 2 : -k / 2; };
+  try {
+    const profile = bits(8); bits(16); ue();
+    let chroma = 1;
+    if ([100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135].includes(profile)) {
+      chroma = ue(); if (chroma === 3) bit();
+      ue(); ue(); bit();
+      if (bit()) {
+        for (let i = 0; i < (chroma === 3 ? 12 : 8); i++) {
+          if (!bit()) continue;
+          let last = 8, next = 8;
+          for (let j = 0; j < (i < 6 ? 16 : 64); j++) { if (next) next = (last + se() + 256) % 256; last = next || last; }
+        }
+      }
+    }
+    ue();
+    const poc = ue();
+    if (poc === 0) ue();
+    else if (poc === 1) { bit(); se(); se(); const n = ue(); for (let i = 0; i < n; i++) se(); }
+    ue(); bit();
+    const wMbs = ue() + 1, hMap = ue() + 1;
+    const frameMbsOnly = bit();
+    if (!frameMbsOnly) bit();
+    bit();
+    let cl = 0, cr = 0, ct = 0, cb = 0;
+    if (bit()) { cl = ue(); cr = ue(); ct = ue(); cb = ue(); }
+    const cx = chroma === 0 ? 1 : 2, cy = (chroma === 1 ? 2 : 1) * (2 - frameMbsOnly);
+    return { width: wMbs * 16 - cx * (cl + cr), height: (2 - frameMbsOnly) * hMap * 16 - cy * (ct + cb) };
+  } catch (_) {
+    return null;
+  }
+}
+
 function isFragment(p) {
   return p.length >= 2 && p[0] === 0x1c && (p[1] & 0x3f) === 0;
 }
@@ -186,4 +245,4 @@ function packetizeFrame(annexB, maxChunk = MAX_CHUNK) {
   return out;
 }
 
-module.exports = { VideoAssembler, avcCodecString, packetizeFrame, nalUnits, KEY_PT, DELTA_PT: 97 };
+module.exports = { VideoAssembler, avcCodecString, packetizeFrame, nalUnits, spsSize, KEY_PT, DELTA_PT: 97 };
