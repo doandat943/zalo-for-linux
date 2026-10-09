@@ -57,8 +57,9 @@ async function main() {
           changed = true;
         }
       } else if (from instanceof RegExp) {
-        if (from.test(content)) {
-          content = content.replace(from, to);
+        const nextContent = content.replace(from, to);
+        if (nextContent !== content) {
+          content = nextContent;
           changed = true;
         }
       }
@@ -97,23 +98,20 @@ async function main() {
   const startupFiles = findFiles(lazyDir, /^main-startup\..*\.js$/);
   for (const f of startupFiles) {
     patchFile(f, [
-      ['ge.b.getStateNetwork()===ge.a.DISCONNECT||_g.default.getSocketState()!==mg.l.OPEN', '!1'],
-      [
-        'checkFeatureEnabled(){return this.configService.isFeatureEnabled()?{ok:!0}:(this.logger.zsymb(9,"Oh4jaU",["Guard feature disabled by server config","VpsUI8"]),{ok:!1,reason:"feature_disabled"})}',
-        'checkFeatureEnabled(){return{ok:!0}}'
-      ],
-      [
-        'checkNetwork(){const e=ge.b.getStateNetwork();return e!==ge.a.DISCONNECT?{ok:!0}:(this.logger.zsymb(9,"3m6V8S",["Guard network disconnected","zonrE1"],{networkState:e}),{ok:!1,reason:"network_disconnected",networkState:e})}',
-        'checkNetwork(){return{ok:!0}}'
-      ],
-      [
-        'isEnable(){const e=this.config.get("cross_setting.offFeature"),t=this.config.get("cross_setting.enable");return!e&&t}',
-        'isEnable(){return !0}'
-      ],
-      [
-        'isEnableResume(){return!!this.isEnable()&&this.config.get("cross_setting.enableResume")}',
-        'isEnableResume(){return !0}'
-      ]
+      // Bypass network disconnect and socket closed check in startup guard
+      [/[\w.]+\.getStateNetwork\(\)===[\w.]+\.DISCONNECT\|\|[\w.]+\.getSocketState\(\)!==[\w.]+\.OPEN/g, '!1'],
+      // Bypass feature disabled check by server config
+      [/checkFeatureEnabled\(\)\{return this\.configService\.isFeatureEnabled\(\)\?\{ok:!0\}:.*?reason:"feature_disabled"\}\)\}/g, 'checkFeatureEnabled(){return{ok:!0}}'],
+      // Bypass network disconnected check in guard
+      [/checkNetwork\(\)\{const \w+=.*?reason:"network_disconnected".*?\}\}/g, 'checkNetwork(){return{ok:!0}}'],
+      // Force cross settings enabled
+      [/isEnable\(\)\{const \w+=this\.config\.get\("cross_setting\.offFeature"\),\w+=this\.config\.get\("cross_setting\.enable"\);return!\w+&&\w+\}/g, 'isEnable(){return !0}'],
+      [/isEnableResume\(\)\{return!!this\.isEnable\(\)&&this\.config\.get\("cross_setting\.enableResume"\)\}/g, 'isEnableResume(){return !0}'],
+      // Force all sync sources (first time login, manual sync, e2ee missing, etc.) allowed
+      [/isEnableBySrc\(\w+\)\{if\(this\.metricts\.onCheckSyncSuggestion\(\w+\),!this\.isEnable\(\)\)return!1;switch\(\w+\)\{.*?\}return!0\}/g, 'isEnableBySrc(e){return!0}'],
+      // Disable Sync V2 controller feature flag so it falls back to Sync V1
+      [/isFeatureEnabled\(\)\{return this\.syncConfigService\.isFeatureEnabled\(\)\}/g, 'isFeatureEnabled(){return !1}'],
+      [/isFeatureEnabledBySyncSource\((\w+)\)\{return this\.syncConfigService\.isFeatureEnabledBySyncSource\(\1\)\}/g, 'isFeatureEnabledBySyncSource($1){return !1}']
     ]);
   }
 
@@ -121,12 +119,13 @@ async function main() {
   const defaultLoginFiles = findFiles(lazyDir, /^default-login-main-startup-shared-worker-znotification\..*\.js$/);
   for (const f of defaultLoginFiles) {
     patchFile(f, [
-      ['const a=!0,s=!0,r=!0', 'const a=!0,s=!1,r=!0'],
+      // Direct transfer_msg control events to SyncMessageController (Sync V1)
+      [/case"transfer_msg":[\w.]+\.ModuleContainer\.resolve\([\w.]+\.SyncController\)\.isFeatureEnabled\(\)\?[\w.]+\._processSync2Ctrl\(\w+\[\w+\]\):([\w.]+\.SyncMessageController\.handleTransferAfterLoginCtrlEvents\(\w+\[\w+\]\);break;)/g, 'case"transfer_msg":$1'],
       ...NETWORK_STATE_FIX,
       ['this.stateCur=u.NOT_SET', 'this.stateCur=u.CONNECTED'],
-      ['canUseIpcCall(){return A.default.enable_ipc_call&&ne}', 'canUseIpcCall(){return !0}'],
-      ['isSupport(){return!!A.default.enable_mac_call&&(A.default.enableCall&&se)}', 'isSupport(){return !0}'],
-      ['isSupportVideoCall(){return this.isSupport()&&A.default.enableVideoCall}', 'isSupportVideoCall(){return !0}']
+      [/canUseIpcCall\(\)\{return \w+\.default\.enable_ipc_call&&\w+\}/g, 'canUseIpcCall(){return !0}'],
+      [/isSupport\(\)\{return!!\w+\.default\.enable_mac_call&&\(\w+\.default\.enableCall&&\w+\)\}/g, 'isSupport(){return !0}'],
+      [/isSupportVideoCall\(\)\{return this\.isSupport\(\)&&\w+\.default\.enableVideoCall\}/g, 'isSupportVideoCall(){return !0}']
     ]);
   }
 
@@ -138,12 +137,13 @@ async function main() {
   ];
   for (const f of otherBundles) {
     patchFile(f, [
-      ['const a=!0,i=!0,o=!0', 'const a=!0,i=!1,o=!0'],
+      // Direct transfer_msg control events to SyncMessageController (Sync V1)
+      [/case"transfer_msg":[\w.]+\.ModuleContainer\.resolve\([\w.]+\.SyncController\)\.isFeatureEnabled\(\)\?[\w.]+\._processSync2Ctrl\(\w+\[\w+\]\):([\w.]+\.SyncMessageController\.handleTransferAfterLoginCtrlEvents\(\w+\[\w+\]\);break;)/g, 'case"transfer_msg":$1'],
       ...NETWORK_STATE_FIX,
       ['this.stateCur=u.NOT_SET', 'this.stateCur=u.CONNECTED'],
-      ['canUseIpcCall(){return A.default.enable_ipc_call&&ne}', 'canUseIpcCall(){return !0}'],
-      ['isSupport(){return!!A.default.enable_mac_call&&(A.default.enableCall&&ie)}', 'isSupport(){return !0}'],
-      ['isSupportVideoCall(){return this.isSupport()&&A.default.enableVideoCall}', 'isSupportVideoCall(){return !0}']
+      [/canUseIpcCall\(\)\{return \w+\.default\.enable_ipc_call&&\w+\}/g, 'canUseIpcCall(){return !0}'],
+      [/isSupport\(\)\{return!!\w+\.default\.enable_mac_call&&\(\w+\.default\.enableCall&&\w+\)\}/g, 'isSupport(){return !0}'],
+      [/isSupportVideoCall\(\)\{return this\.isSupport\(\)&&\w+\.default\.enableVideoCall\}/g, 'isSupportVideoCall(){return !0}']
     ]);
   }
 
