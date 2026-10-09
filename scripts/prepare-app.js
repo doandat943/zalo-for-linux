@@ -260,6 +260,9 @@ async function extractAppAsar() {
   const { main: patchFileUtils } = require('./patches/patch-file-utils');
   await patchFileUtils();
 
+  const { main: patchDiskSpace } = require('./patches/patch-disk-space');
+  await patchDiskSpace();
+
   const { main: patchMp4thumb } = require('./patches/patch-mp4thumb');
   await patchMp4thumb();
 
