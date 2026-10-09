@@ -81,8 +81,8 @@ class EngineCore {
         // A dead audio process must not swallow the signal: the phone learns
         // the mute from 12098, not from the silence alone.
         try { this.media.setMute(on); } catch (e) { this.log('mute:', e.message); }
+        if (this.call) this.call.muted = !!on; // handed to the media of this call (onNegotiated)
         if (this.call && this.call.group) {
-          this.call.muted = !!on;
           this.log('group mute', on ? 'on' : 'off');
           this._groupBroadcast();
         } else this._micState(!on);
@@ -92,7 +92,12 @@ class EngineCore {
     if (typeof this.ui.onDevice === 'function') {
       this.ui.onDevice((kind, name) => { if (this.media.setDevice) this.media.setDevice(kind, name); });
     }
-    if (typeof this.ui.onSpeaker === 'function') this.ui.onSpeaker((on) => this.media.setSpeaker && this.media.setSpeaker(on));
+    if (typeof this.ui.onSpeaker === 'function') {
+      this.ui.onSpeaker((on) => {
+        if (this.call) this.call.speakerOff = !!on;
+        if (this.media.setSpeaker) this.media.setSpeaker(on);
+      });
+    }
     // Our camera, encoded by the call window (H.264 Annex-B frames).
     if (typeof this.ui.onVideoFrame === 'function') {
       this.ui.onVideoFrame((f) => { if (this.call && this.call.state === 'connected' && this.media.sendVideoFrame) this.media.sendVideoFrame(f); });
@@ -373,6 +378,8 @@ class EngineCore {
     c.startedAt = Date.now();
     this.emit({ type: 'request', command: 'action', data: { id: 5 } });
     this.media.onNegotiated({
+      muted: !!c.muted,
+      speakerOff: !!c.speakerOff,
       servers: [c.server],
       config: c.config,
       srtpMode: c.config.srtpMode,
@@ -521,6 +528,8 @@ class EngineCore {
         c.sessId = data.sessId;
         c.localUid = Number(data.fromId) || Number(this.local.id) || 0;
         this.media.onNegotiated({
+          muted: !!c.muted,
+          speakerOff: !!c.speakerOff,
           servers: data.servers,
           config: data.zrtc_config || {},
           srtpMode: data.zrtc_config && data.zrtc_config.srtpMode,
@@ -797,6 +806,8 @@ class EngineCore {
     }
     c.state = 'connecting';
     this.media.onNegotiated({
+      muted: !!c.muted,
+      speakerOff: !!c.speakerOff,
       group: true,
       host: true,
       servers: c.servers,
@@ -903,6 +914,8 @@ class EngineCore {
     if (!c || !c.group || c.state !== 'incoming') return;
     c.state = 'connecting';
     this.media.onNegotiated({
+      muted: !!c.muted,
+      speakerOff: !!c.speakerOff,
       group: true,
       host: false,
       servers: c.servers,

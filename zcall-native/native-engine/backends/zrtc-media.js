@@ -71,6 +71,7 @@ const RTCP_REPORT_INTERVAL_MS = 1000;
 const PLI_MIN_GAP_MS = 1000; // one key frame request per second at most
 const RTCP_LOG_MS = 5000;
 const SHARE_BURST = 6; // screen packets per 1 ms tick
+const AUDIO_TX_LOG_MS = 10000;
 // Group ZaviPing period: the real engine takes it from its config
 // (GroupCallController +0x85c), value not known yet.
 const GROUP_PING_INTERVAL_MS = Number(process.env.ZCALL_GROUP_PING_MS) || 5000;
@@ -149,6 +150,7 @@ class ZrtcMediaBackend extends EventEmitter {
     this.vKeySent = false; // the phone shows nothing until our first key frame
     this.groupCameraOn = false; // ZaviPing "sending video" bit (ZCALL_GROUP_CAMERA=0: never)
     this.rtcp = null; // RtcpFeedback, 1-1 calls only (set in onNegotiated)
+    this.aTxWin = { n: 0, last: 0, maxGap: 0, gaps40: 0, gaps60: 0, since: Date.now() }; // audio send timing, 10 s log line
     this.audioOctets = 0;
     this.lastPliAt = 0;
     this.rtcpLoggedAt = 0;
@@ -192,6 +194,11 @@ class ZrtcMediaBackend extends EventEmitter {
   onNegotiated(params) {
     this.params = params || {};
     this.group = !!this.params.group;
+    // Mute and speaker-off belong to the call: the media object lives on, and a
+    // mute left from the previous call muted the next one's microphone while the
+    // window showed it on (group calls after a muted 1-1 call, 2026-10-09).
+    this.muted = !!this.params.muted;
+    this.speakerOff = !!this.params.speakerOff;
     this.servers = [];
     const list = Array.isArray(this.params.servers) ? this.params.servers : [];
     for (const s of list) {
@@ -506,6 +513,10 @@ class ZrtcMediaBackend extends EventEmitter {
     // ZCALL_AUDIO_ARGS replaces the group config (a live override). 1-1 keeps
     // audio-io's own defaults: this capture's 20 kbps / FEC off is the group
     // zrtcConfig, and 1-1 was already working at 32 kbps with FEC.
+    // The jitter buffer floor of the server's config (minAudioDelayMs, 80-100 in
+    // 1-1 calls), as macOS NetEq; audio-io's default (100) without it.
+    const minDelay = Number(this.params.config && this.params.config.minAudioDelayMs);
+    if (minDelay > 0) args.push('--min-delay', String(Math.trunc(minDelay)));
     if (process.env.ZCALL_AUDIO_ARGS) args.push(...process.env.ZCALL_AUDIO_ARGS.split(' ').filter(Boolean));
     else if (this.group) {
       const audioArgs = groupAudioArgs(this.params.config);
@@ -558,6 +569,7 @@ class ZrtcMediaBackend extends EventEmitter {
     if (this.p2pPath) this._send(wrapP2pAudio({ role: this.params.role, callId: this.params.callId, rtp }), this.p2pPath, 'P2P audio');
     this.counters.tx++;
     this.audioOctets += opus.length;
+    this._noteAudioTx();
     this.seq = (this.seq + 1) & 0xffff;
     if (this.seq === 0) this.roc++;
     this.ts = (this.ts + FRAME_SAMPLES) >>> 0;
@@ -612,6 +624,27 @@ class ZrtcMediaBackend extends EventEmitter {
       const head = chunks[0].subarray(0, Math.min(8, chunks[0].length)).toString('hex');
       this.log('media: group camera probe: plain H.264, type 13, PT 98/97, ' + ext + ', payload ' + head);
     }
+  }
+
+  // When our 20 ms audio frames really leave (the phone's jitter buffer sees
+  // these gaps): one line per 10 s, the longest gap and how many were over
+  // 40 / 60 ms. audio-io encodes on the microphone's clock; a busy event loop
+  // (video in and out) would show here.
+  _noteAudioTx() {
+    const w = this.aTxWin;
+    const now = Date.now();
+    if (w.last) {
+      const gap = now - w.last;
+      if (gap > w.maxGap) w.maxGap = gap;
+      if (gap > 40) w.gaps40++;
+      if (gap > 60) w.gaps60++;
+    }
+    w.last = now;
+    w.n++;
+    if (now - w.since < AUDIO_TX_LOG_MS) return;
+    this.log(`audio tx: ${w.n} frames in ${((now - w.since) / 1000).toFixed(1)} s, max gap ${w.maxGap} ms, gaps >40 ms ${w.gaps40}, >60 ms ${w.gaps60}` +
+      (this.p2pPath ? ', relay + P2P' : ', relay'));
+    this.aTxWin = { n: 0, last: now, maxGap: 0, gaps40: 0, gaps60: 0, since: now };
   }
 
   // Group screen share (macOS GroupCallPeer::_startShareScreenPeer -> ShareScreenPeer):
