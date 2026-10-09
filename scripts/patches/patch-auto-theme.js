@@ -28,15 +28,16 @@ const THEME_MAIN_INJECTION = `
   function isLinuxDark() {
     try {
       const { execSync: _es } = require("child_process");
-      try {
-        const o = _es("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null", { timeout: 1000 }).toString();
-        if (o.includes("prefer-dark")) return true;
-        if (o.includes("default") || o.includes("prefer-light")) return false;
-      } catch (_) {}
+      // The portal reflects the host; sandbox GSettings can be defaults.
       try {
         const o = _es('dbus-send --session --print-reply=literal --dest=org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.Settings.Read string:"org.freedesktop.appearance" string:"color-scheme" 2>/dev/null', { timeout: 1000 }).toString();
         if (o.includes("uint32 1")) return true;
-        if (o.includes("uint32 2") || o.includes("uint32 0")) return false;
+        if (o.includes("uint32 2")) return false;
+      } catch (_) {}
+      try {
+        const o = _es("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null", { timeout: 1000 }).toString();
+        if (o.includes("prefer-dark")) return true;
+        if (o.includes("prefer-light")) return false;
       } catch (_) {}
       try {
         const o = _es("gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null", { timeout: 1000 }).toString().toLowerCase();
@@ -66,13 +67,12 @@ const THEME_MAIN_INJECTION = `
   }
 
   syncTheme();
-  // GNOME: the gsettings monitor pushes changes, no polling needed. Other
-  // desktops (portal / gtk-theme fallbacks) and a failed monitor poll.
+  // Poll host portal changes too: sandbox GSettings monitors may stay silent.
   // isLinuxDark() blocks the main process, so poll sparingly.
   let _quitting = false;
   let _poll = null;
   const _startPoll = () => { if (!_poll && !_quitting) _poll = setInterval(syncTheme, 10000); };
-  if (!/GNOME/i.test(process.env.XDG_CURRENT_DESKTOP || "")) _startPoll();
+  _startPoll();
   try {
     const { spawn: _sp } = require("child_process");
     const _w = _sp("gsettings", ["monitor", "org.gnome.desktop.interface", "color-scheme"], { stdio: ["ignore", "pipe", "ignore"] });
