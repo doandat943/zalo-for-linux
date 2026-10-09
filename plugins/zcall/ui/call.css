@@ -90,6 +90,8 @@ body.has-video:not(.has-tiles) #peerName { display: block; }
 #pip { position: absolute; top: 0; right: 0; width: clamp(170px, 26.5625vw, 320px); height: clamp(96px, 15vw, 180px); background: #000; z-index: 2; display: none; overflow: hidden; }
 body.has-self:not(.has-tiles) #pip { display: block; }
 #pip canvas, .tile canvas { width: 100%; height: 100%; display: block; object-fit: cover; background: #000; }
+/* A member's picture whole: the phone's 180x320 portrait covering a 622 px wide tile
+   was cut to a band and blown up 3.5 times (2026-10-09), unrecognizable. */
 #pip .label { height: 24px; line-height: 24px; font-size: 14px; background: none; text-shadow: 0 1px 3px #000; }
 
 /* 1-1 split layout (the grid button): the peer and us side by side. */
@@ -99,10 +101,26 @@ body.split #pip canvas { object-fit: contain; }
 body.split #pip .label { height: 34px; line-height: 34px; font-size: 16px; background: var(--label-bg); text-shadow: none; }
 body.split.has-video #peerName { max-width: 50%; }
 
-/* Group: 16:9 tiles, 5 apart, centred (sizes set by call.js). */
-#stage { position: absolute; inset: 0; display: none; flex-wrap: wrap; align-content: center; justify-content: center; gap: 5px; }
-body.has-tiles #stage { display: flex; }
-.tile { position: relative; background: #000; overflow: hidden; }
+/* Group: tiles placed by call.js as Zalo for macOS (grid or conference, see layoutTiles),
+   on its dark grey; black cells, the one talking with a blue border. */
+#stage { position: absolute; inset: 0; display: none; background: #1a1a1a; }
+body.has-tiles #stage { display: block; }
+.tile { position: absolute; background: #000; overflow: hidden; cursor: pointer; }
+.tile.speaking { outline: 1.5px solid #0068ff; outline-offset: -1.5px; } /* outline: drawn over the video */
+.tile .pinMark { display: none; position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 3px;
+  border-radius: 11px; background: rgba(0, 0, 0, 0.55); pointer-events: none; z-index: 3; }
+.tile.pinned .pinMark { display: block; }
+/* No video (not yet, or camera off): the avatar circle on its blurred picture. */
+.tile .tavbg, .tile .tav { display: none; }
+.tile.novideo canvas { visibility: hidden; }
+.tile.novideo .tavbg { display: block; position: absolute; inset: -30px; background: center / cover no-repeat #222; filter: blur(22px) brightness(0.3); }
+.tile.novideo .tav { display: flex; align-items: center; justify-content: center; position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%); border-radius: 50%; background: center / cover no-repeat #555; box-shadow: 0 0 0 2px #fff; color: #fff; }
+/* Name and muted micro, bottom left (macOS: 42 px box, 2x). */
+#stage .tile .label { display: flex; align-items: center; gap: 4px; height: 21px; line-height: 21px; padding: 0 5px;
+  font-size: 13.5px; background: rgba(0, 0, 0, 0.5); }
+#stage .tile .label .micx { width: 14px; height: 14px; }
+#stage .tile .label .hide { display: none; }
 
 /* Peer state chips, top centre. */
 .notes { position: absolute; top: 10px; left: 80px; right: 80px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; z-index: 3; pointer-events: none; }
@@ -134,8 +152,9 @@ body.has-tiles #stage { display: flex; }
 #screen, #layout, #full { display: none; }
 body.is-video.phase-connected #screen { display: flex; }
 body.is-video.phase-connected.has-video:not(.has-tiles) #layout { display: flex; }
+body.is-video.phase-connected.has-tiles #layout { display: flex; }
 body.is-video:not(.phase-ended) #full { display: flex; }
-body:not(.phase-connected) #full, body.is-video:not(.has-video) #full, body.has-tiles #full { right: 50px; }
+body:not(.phase-connected) #full, body.is-video:not(.has-video):not(.has-tiles) #full { right: 50px; }
 
 /* --- device menu: white, rows of 30, above the bar --- */
 #menu {

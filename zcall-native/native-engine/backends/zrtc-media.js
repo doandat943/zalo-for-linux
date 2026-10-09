@@ -78,6 +78,7 @@ const SHARE_BURST = 6; // screen packets per 1 ms tick
 const VIDEO_BURST = 8;
 const VIDEO_TX_LOG_MS = 5000;
 const AUDIO_TX_LOG_MS = 10000;
+const SPEAK_DBOV = 50; // a member's audio level (-dBov) at or under this counts as speech
 // Group ZaviPing period: the real engine takes it from its config
 // (GroupCallController +0x85c), value not known yet.
 const GROUP_PING_INTERVAL_MS = Number(process.env.ZCALL_GROUP_PING_MS) || 5000;
@@ -159,6 +160,7 @@ class ZrtcMediaBackend extends EventEmitter {
     this.sendRate = null; // SendRate, 1-1 calls only: the camera's rung of the server ladder
     this.downPrev = null; // last audio reception counters (_downlinkLoss)
     this.groupRtcpIn = null; // group: RTCP kinds the SFU sent (_noteGroupRtcp)
+    this.speaking = new Map(); // group: member UID -> { hist, on, lastLoud } (_noteSpeaking)
     this.vOut = []; // 1-1 video packets waiting for the pacer: [packet, destination, label]
     this.vOutTimer = null;
     this.vTxWin = { frames: 0, keys: 0, bytes: 0, pkts: 0, paced: 0, since: Date.now(), lastTx: 0 }; // for the 5 s log line
@@ -1251,6 +1253,26 @@ class ZrtcMediaBackend extends EventEmitter {
     this.log(`media: member ${ssrc} SFU ext ${sfu} (PT ${rtp[1] & 0x7f}${rtp[1] & 0x80 ? ', marker' : ''}, packet ${m.pkts})`);
   }
 
+  // Group: who is talking, from the audio level each member's packets carry
+  // (RFC 6464, one-byte extension id 2: V bit + level in -dBov, 127 = silence;
+  // the macOS client sends 41..46 while speaking). On when 4 of the last 10
+  // frames (200 ms) are louder than SPEAK_DBOV, off after 600 ms below it. The
+  // window marks the tile and, in the speaker layout, puts the speaker in the
+  // main view (macOS: onPartnerSpeakingStateChanged -> changeCurrentMainUserId).
+  _noteSpeaking(ssrc, rtp) {
+    const level = rtpAudioLevel(rtp);
+    if (level === null) return;
+    const now = Date.now();
+    let sp = this.speaking.get(ssrc);
+    if (!sp) { sp = { hist: [], on: false, lastLoud: 0 }; this.speaking.set(ssrc, sp); }
+    const loud = level <= SPEAK_DBOV;
+    sp.hist.push(loud);
+    if (sp.hist.length > 10) sp.hist.shift();
+    if (loud) sp.lastLoud = now;
+    const on = sp.on ? now - sp.lastLoud < 600 : sp.hist.filter(Boolean).length >= 4;
+    if (on !== sp.on) { sp.on = on; this.emit('memberSpeaking', ssrc, on); }
+  }
+
   // Group: the RTCP the SFU sends us (type 0x05 / 0x0f): its kinds (PT/fmt) per 5 s,
   // and the first two packets of each kind in hex, to learn what it expects back.
   _noteGroupRtcp(kind, buf) {
@@ -1329,6 +1351,7 @@ class ZrtcMediaBackend extends EventEmitter {
       const n = (this.members.get(got.ssrc) || 0) + 1;
       this.members.set(got.ssrc, n);
       if (n === 1) { this.log('media: first audio from member', got.ssrc); this.emit('memberAudio', got.ssrc); }
+      this._noteSpeaking(got.ssrc, rtp);
     }
     if (this.rtcp) this.rtcp.onRtp('audio', rtp, Date.now());
     this.counters.rx++;
@@ -1347,6 +1370,24 @@ class ZrtcMediaBackend extends EventEmitter {
   }
 }
 
+// RFC 6464 audio level of an RTP packet (one-byte extension id 2), 0..127 (-dBov), or null.
+function rtpAudioLevel(rtp) {
+  if (rtp.length < 16 || !(rtp[0] & 0x10)) return null;
+  let o = 12 + 4 * (rtp[0] & 0x0f);
+  if (o + 4 > rtp.length || rtp.readUInt16BE(o) !== 0xbede) return null;
+  const end = Math.min(rtp.length, o + 4 + 4 * rtp.readUInt16BE(o + 2));
+  o += 4;
+  while (o < end) {
+    if (rtp[o] === 0) { o++; continue; }
+    const id = rtp[o] >> 4;
+    const len = (rtp[o] & 0x0f) + 1;
+    if (id === 15) return null;
+    if (id === 2 && o + 1 < end) return rtp[o + 1] & 0x7f;
+    o += 1 + len;
+  }
+  return null;
+}
+
 // Group encoder flags from the same zrtcConfig macOS reads. Absent keys keep
 // audio-io's defaults. audioBitrate is kbps (fromJson stores it as given).
 function groupAudioArgs(config) {
@@ -1362,4 +1403,4 @@ function groupAudioArgs(config) {
   return args;
 }
 
-module.exports = { ZrtcMediaBackend, parseHostPort, groupAudioArgs };
+module.exports = { ZrtcMediaBackend, parseHostPort, groupAudioArgs, rtpAudioLevel };

@@ -19,7 +19,17 @@ const act = (action, extra) => ipcRenderer.send('zcall-ui-action', Object.assign
 
 $('end').onclick = () => act('hangup');
 $('mute').onclick = () => { const on = !state.muted; act('log', { text: 'mute ' + (on ? 'on' : 'off') }); act('mute', { on }); };
-$('layout').onclick = () => { document.body.classList.toggle('split'); };
+$('layout').onclick = () => {
+  if (document.body.classList.contains('has-tiles')) {
+    groupLayout = groupLayout === 'grid' ? 'conference' : 'grid';
+    if (groupLayout === 'grid') pinned = null;
+    act('log', { text: 'group layout ' + groupLayout });
+    render();
+    layoutTiles();
+    return;
+  }
+  document.body.classList.toggle('split');
+};
 let compactMode = false, autoCompact = false;
 $('compactBtn').onclick = () => { autoCompact = false; ipcRenderer.send('zcall-ui-window', compactMode ? 'expand' : 'compact'); };
 // Full screen (video and group): the bar's button, F11, a double click on the picture; Esc leaves it.
@@ -83,6 +93,9 @@ function render() {
   $('cam').title = noCamera ? 'Không có camera' : (camOn ? 'Tắt camera' : 'Bật camera');
   setIcon($('screenIcon'), sharing ? 'shareOff' : 'share');
   $('screen').title = sharing ? 'Dừng chia sẻ màn hình' : 'Chia sẻ màn hình';
+  const tilesOn = document.body.classList.contains('has-tiles');
+  setIcon($('layout').firstElementChild, tilesOn && groupLayout === 'grid' ? 'conference' : 'grid');
+  $('layout').title = tilesOn ? (groupLayout === 'grid' ? 'Bố cục người nói chính' : 'Bố cục lưới') : 'Đổi bố cục';
   $('compactBtn').classList.toggle('hide', !(compactMode || sharing));
   $('compactBtn').textContent = compactMode ? 'Phóng to' : 'Thu gọn';
   clearInterval(tick);
@@ -93,6 +106,9 @@ function render() {
 // Group: our camera is a tile like the others (first), 1-1 it is the 170x96 corner view.
 const selfTile = document.createElement('div');
 selfTile.className = 'tile';
+// The pin mark of a pinned tile (Zalo's pin.svg, through setIcon: the assets' path).
+function pinMark() { const img = document.createElement('img'); img.className = 'pinMark'; img.alt = ''; setIcon(img, 'pin'); return img; }
+selfTile.appendChild(pinMark());
 const selfLabel = document.createElement('span');
 selfLabel.className = 'label';
 selfLabel.textContent = 'Bạn';
@@ -108,29 +124,185 @@ function placeSelf() {
   }
   layoutTiles();
 }
-// The largest 16:9 tiles, 5 apart, that fit the picture area.
-const GAP = 5;
+// Group layouts of Zalo for macOS (ZCallGroupWindow), measured on its call window
+// (screenshots 2026-10-10, 2x, video area 1996x968 px):
+//   grid (_alignViewInGridLayout): equal cells of 820x482 px (ratio 1.70), 8-9 px
+//     apart, rows filling the height, a last row that is not full centred;
+//   conference (_alignViewInConferenceLayout): the main view on the left, the others
+//     in a column on the right, 437 px wide (21.9 % of the width), cells of
+//     437x285 px (ratio 1.53) from the top, 7 px apart, 16 px from the main view;
+//   the bar's button switches them (vidBtnSplitScreenClick); the main view is the
+//   pinned member (menuPinPartner) or the one talking (onPartnerSpeakingStateChanged);
+//   a landscape video fills its cell, a portrait one (the phone) is shown whole with
+//   black sides; a member without video shows its avatar (a circle 35 % of the cell's
+//   height on its blurred picture), and every cell its name and a muted micro.
+const CELL_RATIO = 820 / 482, THUMB_RATIO = 437 / 285, COLUMN_SHARE = 437 / 1996;
+const GRID_GAP = 4, COLUMN_GAP = 8, THUMB_GAP = 4, COLUMN_RIGHT = 2, AVATAR_SHARE = 0.35; // COLUMN_RIGHT: 5 px (2x) right of the column
+let groupLayout = 'grid', pinned = null, talking = null;
+function tileKey(box) { return box === selfTile ? 'self' : box.dataset.src; }
+function videoRatio(box) {
+  const c = box.querySelector('canvas');
+  return c && c.width > 0 && c.height > 0 ? c.width / c.height : 16 / 9;
+}
+function place(box, x, y, w, h) {
+  box.style.left = Math.round(x) + 'px'; box.style.top = Math.round(y) + 'px';
+  box.style.width = Math.max(1, Math.round(w)) + 'px'; box.style.height = Math.max(1, Math.round(h)) + 'px';
+  // Fill when the video has the cell's orientation, else whole (macOS: the phone's
+  // portrait in a landscape cell has black sides, a landscape camera fills).
+  const c = box.querySelector('canvas');
+  if (c) c.style.objectFit = (videoRatio(box) >= 1) === (w >= h) ? 'cover' : 'contain';
+  const av = box.querySelector('.tav');
+  if (av) { const d = Math.round(h * AVATAR_SHARE); av.style.width = d + 'px'; av.style.height = d + 'px'; av.style.fontSize = Math.round(d * 0.4) + 'px'; }
+}
+// _calculateColRowFromWindowSize: the column count that gives the largest cell.
+function gridLayout(boxes, W, H) {
+  const n = boxes.length;
+  let best = null;
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const w = Math.min((W - (cols - 1) * GRID_GAP) / cols, ((H - (rows - 1) * GRID_GAP) / rows) * CELL_RATIO);
+    if (w > 0 && (!best || w > best.w + 0.5)) best = { cols, rows, w };
+  }
+  if (!best) return;
+  const { cols, rows, w } = best;
+  const h = w / CELL_RATIO;
+  const top = (H - (rows * h + (rows - 1) * GRID_GAP)) / 2;
+  boxes.forEach((box, i) => {
+    const row = Math.floor(i / cols), col = i % cols;
+    const inRow = row === rows - 1 ? n - row * cols : cols;
+    const left = (W - (inRow * w + (inRow - 1) * GRID_GAP)) / 2;
+    place(box, left + col * (w + GRID_GAP), top + row * (h + GRID_GAP), w, h);
+  });
+}
+function conferenceLayout(main, rest, W, H) {
+  if (!rest.length) { place(main, 0, 0, W, H); return; }
+  const colW = Math.round(Math.max(150, Math.min(320, W * COLUMN_SHARE)));
+  let tw = colW, th = colW / THUMB_RATIO;
+  const need = rest.length * th + (rest.length - 1) * THUMB_GAP;
+  if (need > H) { th = (H - (rest.length - 1) * THUMB_GAP) / rest.length; tw = th * THUMB_RATIO; }
+  const colX = W - COLUMN_RIGHT - colW;
+  rest.forEach((box, i) => place(box, colX + (colW - tw) / 2, i * (th + THUMB_GAP), tw, th));
+  place(main, 0, 0, colX - COLUMN_GAP, H);
+}
 function layoutTiles() {
   const stage = $('stage');
   const boxes = Array.from(stage.children);
-  const n = boxes.length;
-  if (!n) return;
+  if (!boxes.length) return;
   const W = stage.clientWidth, H = stage.clientHeight;
-  let best = { w: 0, h: 0 };
-  for (let cols = 1; cols <= n; cols++) {
-    const rows = Math.ceil(n / cols);
-    let w = (W - (cols - 1) * GAP) / cols;
-    let h = w * 9 / 16;
-    if (h * rows + (rows - 1) * GAP > H) { h = (H - (rows - 1) * GAP) / rows; w = h * 16 / 9; }
-    if (w > best.w) best = { w: Math.floor(w), h: Math.floor(h) };
+  const conference = groupLayout === 'conference' && boxes.length > 1;
+  document.body.classList.toggle('conference', conference);
+  let main = null;
+  if (conference) {
+    const want = pinned || talking;
+    main = boxes.find((b) => tileKey(b) === want) || boxes.find((b) => b !== selfTile) || boxes[0];
   }
-  for (const b of boxes) { b.style.width = best.w + 'px'; b.style.height = best.h + 'px'; }
+  for (const b of boxes) {
+    b.classList.toggle('main', b === main);
+    b.classList.toggle('pinned', pinned !== null && tileKey(b) === pinned);
+  }
+  if (conference) conferenceLayout(main, boxes.filter((b) => b !== main), W, H);
+  else gridLayout(boxes, W, H);
 }
 window.addEventListener('resize', layoutTiles);
+$('stage').addEventListener('click', (e) => {
+  const box = e.target.closest('.tile');
+  if (!box) return;
+  const key = tileKey(box);
+  // Pin: that tile in the main view (the conference layout); again: unpin.
+  if (pinned === key) pinned = null;
+  else { pinned = key; groupLayout = 'conference'; }
+  act('log', { text: 'group layout ' + groupLayout + (pinned ? ', pinned ' + pinned : '') });
+  render();
+  layoutTiles();
+});
+ipcRenderer.on('zcall-ui-speaking', (_e, m) => {
+  const key = String(m.src); // tiles are keyed by the src as text
+  const t = tiles.get(key);
+  if (t) t.box.classList.toggle('speaking', !!m.on);
+  if (m.on) talking = key;
+  else if (talking === key) talking = null;
+  if (groupLayout === 'conference' && !pinned) layoutTiles();
+});
+// One tile per member: video canvas, avatar (no video yet, or camera off), name and
+// muted micro (macOS PartnerUI), pin mark. Made by the member list or the first frame.
+function ensureTile(key) {
+  let t = tiles.get(key);
+  if (t) return t;
+  const c = document.createElement('canvas');
+  const box = document.createElement('div');
+  box.className = 'tile novideo';
+  box.dataset.src = key;
+  box.title = 'Bấm để ghim / bỏ ghim';
+  const avbg = document.createElement('div'); avbg.className = 'tavbg';
+  const av = document.createElement('div'); av.className = 'tav';
+  const label = document.createElement('span'); label.className = 'label';
+  const name = document.createElement('span'); name.className = 'name';
+  const mic = document.createElement('img'); mic.className = 'micx'; mic.alt = ''; setIcon(mic, 'micMuted');
+  label.append(name, mic);
+  box.append(avbg, av, c, label, pinMark());
+  $('stage').appendChild(box);
+  t = { box, canvas: c, g: c.getContext('2d'), dec: null, codec: null, ts: 0, errLogged: false, sentW: 0, ro: null, rt: 0,
+    name, mic, av, avbg, avatar: '', camOff: false, hasFrame: false };
+  tiles.set(key, t);
+  // The engine asks the server for the layer that fits this tile (macOS does the same
+  // from the tile's render width): tell it the width in pixels, and again when it changes.
+  const reportWidth = () => {
+    t.rt = 0;
+    const w = Math.round(box.getBoundingClientRect().width * (window.devicePixelRatio || 1));
+    if (w > 0 && w !== t.sentW) { t.sentW = w; act('tile', { src: Number(key), width: w }); }
+  };
+  t.ro = new ResizeObserver(() => { if (!t.rt) t.rt = setTimeout(reportWidth, 300); });
+  t.ro.observe(box);
+  document.body.classList.add('has-tiles');
+  placeSelf();
+  return t;
+}
+function tileVideoState(t) {
+  t.box.classList.toggle('novideo', t.camOff || !t.hasFrame);
+}
+function dropTile(key) {
+  const t = tiles.get(key);
+  if (!t) return;
+  if (t.dec && t.dec.state !== 'closed') try { t.dec.close(); } catch (_) {}
+  if (t.ro) t.ro.disconnect();
+  if (t.rt) clearTimeout(t.rt);
+  t.box.remove();
+  tiles.delete(key);
+  if (pinned === key) pinned = null;
+  if (talking === key) talking = null;
+  if (!tiles.size) document.body.classList.remove('has-tiles', 'conference');
+  placeSelf();
+}
+// The engine's member list (state.members): a tile for everyone in the call or being
+// rung, name, avatar, micro and camera state; tiles of those who left go.
+function syncMembers(list) {
+  if (!Array.isArray(list)) return;
+  const keep = new Set();
+  for (const m of list) {
+    const key = String(m.src);
+    keep.add(key);
+    const t = ensureTile(key);
+    t.fromList = true;
+    t.name.textContent = (m.name || 'Thành viên') + (m.state === 'ringing' ? ' (đang gọi…)' : '');
+    t.mic.classList.toggle('hide', !m.muted);
+    t.camOff = !!m.camOff;
+    if ((m.avatar || '') !== t.avatar) {
+      t.avatar = m.avatar || '';
+      const url = t.avatar ? 'url("' + t.avatar.replace(/["\\\n]/g, '') + '")' : '';
+      t.av.style.backgroundImage = url; t.avbg.style.backgroundImage = url;
+      t.av.textContent = t.avatar ? '' : (m.name || '?').trim().charAt(0).toUpperCase();
+    }
+    tileVideoState(t);
+  }
+  for (const [key, t] of [...tiles]) if (t.fromList && !keep.has(key)) dropTile(key);
+  layoutTiles();
+}
 new MutationObserver(placeSelf).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
-// Group layer 0. open() and a 1-1 state omit the key, which clears it.
-// status() keeps the key once the engine has set it.
+// Group: layer 0 of the SFU table. 1-1: the rung of the server's ladder the engine
+// picked from the phone's loss reports (send-rate.js), with keyMs (key frames on the
+// phone's request, plus one every 10 s) and captureBig (capture 1280x720 for rungs
+// above 640 px). open() omits the key, which clears it; status() keeps it.
 let cameraEncode = null, screenEncode = null;
 let camChosen = false; // camStartOff ("Trả lời không mở camera") applies once per call
 ipcRenderer.on('zcall-ui-state', (_e, s) => {
@@ -139,6 +311,7 @@ ipcRenderer.on('zcall-ui-state', (_e, s) => {
   cameraEncode = state.cameraEncode || null;
   screenEncode = state.screenEncode || null;
   if (!camChosen && state.phase) { camChosen = true; if (state.camStartOff) camOn = false; }
+  if (state.phase === 'connected' && state.members) syncMembers(state.members); // group tiles
   if (state.phase !== 'connected') {
     stopVideo(); stopLocal(); sharing = false;
     if (pendingScreen) { pendingScreen.stop(); pendingScreen = null; }
@@ -510,13 +683,9 @@ function stopVideo() {
   if (dec && dec.state !== 'closed') try { dec.close(); } catch (_) {}
   dec = null; decCodec = null;
   decErrLogged = false; shown = 0; shownSince = 0; shownTotal = 0;
-  for (const t of tiles.values()) {
-    if (t.dec && t.dec.state !== 'closed') try { t.dec.close(); } catch (_) {}
-    if (t.ro) t.ro.disconnect();
-    if (t.rt) clearTimeout(t.rt);
-  }
-  tiles.clear();
-  document.body.classList.remove('has-video', 'has-tiles');
+  for (const key of [...tiles.keys()]) dropTile(key);
+  pinned = null; talking = null; groupLayout = 'grid';
+  document.body.classList.remove('has-video', 'has-tiles', 'conference');
   placeSelf();
   $('stage').textContent = '';
 }
@@ -551,28 +720,7 @@ function newDecoder(codec) {
   dec.configure({ codec, optimizeForLatency: true, hardwareAcceleration: 'prefer-software' });
 }
 function showMember(m) {
-  let t = tiles.get(m.src);
-  if (!t) {
-    const c = document.createElement('canvas');
-    const box = document.createElement('div');
-    box.className = 'tile';
-    box.appendChild(c);
-    $('stage').appendChild(box);
-    t = { box, canvas: c, g: c.getContext('2d'), dec: null, codec: null, ts: 0, errLogged: false, sentW: 0, ro: null, rt: 0 };
-    tiles.set(m.src, t);
-    // The engine asks the server for the layer that fits this tile (macOS does the same
-    // from the tile's render width): tell it the width in pixels, and again when it changes.
-    const src = m.src;
-    const reportWidth = () => {
-      t.rt = 0;
-      const w = Math.round(c.getBoundingClientRect().width * (window.devicePixelRatio || 1));
-      if (w > 0 && w !== t.sentW) { t.sentW = w; act('tile', { src, width: w }); }
-    };
-    t.ro = new ResizeObserver(() => { if (!t.rt) t.rt = setTimeout(reportWidth, 300); });
-    t.ro.observe(c);
-    document.body.classList.add('has-video', 'has-tiles');
-    placeSelf();
-  }
+  const t = ensureTile(String(m.src));
   if (m.key && (!t.dec || t.dec.state === 'closed' || m.codec !== t.codec)) {
     if (t.dec && t.dec.state !== 'closed') try { t.dec.close(); } catch (_) {}
     t.codec = m.codec;
@@ -582,8 +730,10 @@ function showMember(m) {
         if (t.canvas.width !== f.displayWidth || t.canvas.height !== f.displayHeight) {
           t.canvas.width = f.displayWidth; t.canvas.height = f.displayHeight;
           act('log', { text: 'video ' + src + ' ' + f.displayWidth + 'x' + f.displayHeight + ' (tile ' + t.sentW + ' px)' });
+          layoutTiles(); // fill or whole, by the video's orientation
         }
         t.g.drawImage(f, 0, 0);
+        if (!t.hasFrame) { t.hasFrame = true; tileVideoState(t); }
         const now = Date.now(); t.shown = (t.shown || 0) + 1;
         if (!t.shownSince) t.shownSince = now;
         if (now - t.shownSince >= 5000) {
@@ -592,7 +742,7 @@ function showMember(m) {
           t.shown = 0; t.shownSince = now; t.rxBytes = 0;
         }
         f.close();
-        document.body.classList.add('has-video', 'has-tiles');
+        document.body.classList.add('has-video');
       },
       error: (e) => {
         t.dec = null;

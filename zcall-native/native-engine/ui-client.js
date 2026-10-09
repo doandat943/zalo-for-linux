@@ -5,8 +5,9 @@
 // without them (engine run on its own) the zenity window is used instead.
 //
 // Protocol: one JSON object per line.
-//   engine -> ui  {type:"state", phase, name, avatar, text, since, video, muted, speakerOff, peerCamOff, peerMuted, peerSharing, cameraEncode?}
+//   engine -> ui  {type:"state", phase, name, avatar, text, since, video, muted, speakerOff, peerCamOff, peerMuted, peerSharing, cameraEncode?, members?}
 //                 {type:"keyframe"}                    encode the next camera frame as a key frame
+//                 {type:"speaking", src, on}           group: member src is talking (or stopped)
 //                 {type:"close", text}
 //   ui -> engine  {action:"hangup"|"accept"|"reject"|"mute"|"speaker"|"camera", on?}
 //                 {action:"videoFrame", key, data, screen, w, h}   our camera or screen, H.264 Annex-B (base64)
@@ -87,6 +88,17 @@ class ElectronCallUi {
 
   requestKeyFrame() {
     this._send({ type: 'keyframe' });
+  }
+
+  // Group: the members (src = UID, name, avatar, muted, camOff, state) for the tiles.
+  members(list) {
+    if (!this.state) return;
+    this._state({ ...this.state, members: list });
+  }
+
+  // Group: member src started / stopped talking (tile border, speaker layout).
+  speaking(src, on) {
+    this._send({ type: 'speaking', src, on: !!on });
   }
 
   // One received video frame (H.264 Annex-B): the window decodes and shows it.

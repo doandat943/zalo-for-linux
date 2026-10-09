@@ -15,14 +15,43 @@ let answered = false;
 function answer(camStartOff) {
   if (answered) return;
   answered = true;
+  stopShake();
   stopSound('ringtone');
   ipcRenderer.send('zcall-incoming-answer', { camStartOff: !!camStartOff });
 }
 function decline() {
   if (answered) return;
   answered = true;
+  stopShake();
   stopSound('ringtone');
   act('reject');
+}
+// The answer button rings as Zalo for macOS's (ZButton::addAnimation, from
+// ZCalleeWindow::_initGenericUi, disassembled 2026-10-10): a 600 ms timer flips
+// between shaking and resting (waitToAnimate); while shaking, every 40 ms the phase
+// grows by pi/2 (animate) and the icon is drawn turned by sin(phase) x 15 degrees
+// about its centre (paintEvent: translate, rotate, drawPixmap): 0, +15, 0, -15, ...
+const SHAKE_MS = 600, TICK_MS = 40, SHAKE_DEG = 15;
+let shakeTimer = null, tickTimer = null, phase = 0;
+function stopShake() {
+  clearInterval(shakeTimer); clearInterval(tickTimer);
+  shakeTimer = tickTimer = null; phase = 0;
+  $('acceptIcon').style.transform = '';
+}
+function startShake() {
+  if (shakeTimer) return;
+  let shaking = false;
+  const flip = () => {
+    shaking = !shaking;
+    clearInterval(tickTimer); tickTimer = null; phase = 0;
+    $('acceptIcon').style.transform = '';
+    if (shaking) tickTimer = setInterval(() => {
+      phase += Math.PI / 2;
+      $('acceptIcon').style.transform = 'rotate(' + (Math.sin(phase) * SHAKE_DEG).toFixed(3) + 'deg)';
+    }, TICK_MS);
+  };
+  shakeTimer = setInterval(flip, SHAKE_MS);
+  flip();
 }
 $('accept').onclick = () => answer(false);
 $('noCam').onclick = () => answer(true);
@@ -53,5 +82,6 @@ ipcRenderer.on('zcall-incoming-state', (_e, s) => {
   setIcon($('acceptIcon'), s.video ? 'acceptVideo' : 'acceptAudio');
   $('noCam').classList.toggle('hide', !s.video || !!s.noAnswer);
   if (!answered) playSound('ringtone', true);
+  if (!answered && !s.noAnswer) startShake(); else stopShake();
 });
-ipcRenderer.on('zcall-incoming-stop', () => { stopSound('ringtone'); });
+ipcRenderer.on('zcall-incoming-stop', () => { stopSound('ringtone'); stopShake(); });
