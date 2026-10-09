@@ -202,7 +202,7 @@ async function extractWindows() {
     process.env.ZALO_WIN_VERSION = version;
     logger.success('Windows plugins extracted successfully');
   } catch (error) {
-    logger.warn('Windows extraction failed, calls unavailable: ' + error.message);
+    logger.warn('Windows extraction failed, OCR unavailable: ' + error.message);
   }
 }
 
@@ -272,8 +272,9 @@ async function extractAppAsar() {
   const { main: patchZcallCallgate } = require('./patches/patch-zcall-callgate');
   await patchZcallCallgate();
 
-  const { main: patchZcallCallv2 } = require('./patches/patch-zcall-callv2');
-  await patchZcallCallv2();
+  // Calls run on the native engine (zcall-native/), no Wine.
+  const { main: patchZcallNative } = require('./patches/patch-zcall-native');
+  await patchZcallNative();
 
   // const { main: patchFixImageResizeLinux } = require('./patches/patch-fix-image-resize-linux');
   // await patchFixImageResizeLinux();
@@ -313,6 +314,12 @@ async function extractAppAsar() {
 
   const { main: patchflatpakFileTransfer } = require('./patches/patch-flatpak-file-transfer');
   await patchflatpakFileTransfer();
+
+  // Without it Zalo would look for ZaloCall.exe / ZaloHelper.app: no calls at all.
+  const mainJs = path.join(APP_DIR, 'main-dist', 'main.js');
+  if (!fs.existsSync(mainJs) || !fs.readFileSync(mainJs, 'utf8').includes('ZCALL_ENGINE_JS')) {
+    throw new Error('native call patch missing from app/main-dist/main.js');
+  }
 }
 
 function commandExists(command) {
