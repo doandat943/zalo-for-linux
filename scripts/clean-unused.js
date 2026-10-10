@@ -5,7 +5,6 @@ const logger = require('./utils/logger');
 const APP_DIR = path.join(__dirname, '..', 'app');
 const APP_NATIVE = path.join(APP_DIR, 'native');
 const APP_NATIVE_LIBS = path.join(APP_NATIVE, 'nativelibs');
-const APP_ZCALL = path.join(APP_NATIVE, 'qt-call-and-cap');
 
 const CLEAN_NATIVELiBS =[
     "db-cross-v4/prebuilt/darwin",
@@ -33,11 +32,6 @@ const CLEAN_NATIVELiBS =[
     "zwalker/darwin-x64",
 ]
 
-const CLEAN_ZCALL = [
-    "ZaloCap.exe",
-    "ZaviMeet.exe"
-]
-
 async function main() {
   logger.info('Cleaning unused nativelibs...');
 
@@ -50,20 +44,6 @@ async function main() {
     } catch (e) {
       logger.warn('Could not find', dirPath);
     }
-  }
-  if (fs.existsSync(APP_ZCALL)) {
-    logger.info('Cleaning unused zcall files...');
-
-    for(const file of CLEAN_ZCALL) {
-      const filePath = path.join(APP_ZCALL, file);
-      try {
-        await fs.access(filePath);
-        await fs.remove(filePath);
-        logger.dim('Cleaned', filePath);
-      } catch (e) {
-        logger.warn('Could not find', filePath);
-      }
-    }   
   }
 }
 
