@@ -7,7 +7,7 @@ mod image;
 mod ipc;
 mod platform;
 mod runtime;
-mod vault;
+mod models;
 use anyhow::{bail, Context, Result};
 use std::{path::PathBuf, sync::{atomic::Ordering, Arc, Mutex}};
 fn main() {
@@ -19,7 +19,7 @@ fn main() {
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args.len() == 1 && (args[0] == "--help" || args[0] == "-h") {
-        eprintln!("zocr-host [--socket-dir DIR]\nBinary IPC on stdin/stdout. Requires ZOCR_AUTH_TOKEN.\nPlace seed_key and text_digest_key (64 hex characters each), libonnxruntime.so and zocr/models.zmdl beside binary.");
+        eprintln!("zocr-host [--socket-dir DIR]\nBinary IPC on stdin/stdout. Requires ZOCR_AUTH_TOKEN.\nPlace libonnxruntime.so and models/{{detector.onnx,recognizer.onnx,classifier.onnx,dictionary.txt}} beside binary.");
         return Ok(());
     }
     let socket_dir =

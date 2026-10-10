@@ -7,10 +7,6 @@ build = "build.rs"
 
 [dependencies]
 anyhow = "1"
-aes = { version = "0.8", features = ["zeroize"] }
-aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
-hmac = "0.12"
-sha2 = "0.10"
 hex = "0.4"
 zeroize = "1"
 subtle = "2.6"
