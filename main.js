@@ -25,6 +25,11 @@ const BACKGROUND_WINDOW_TITLES = ['Shared Worker', 'SQLite'];
 
 // Linux optimizations & environment defaults
 if (process.platform === 'linux') {
+  if (process.env.FLATPAK_ID || fs.existsSync('/.flatpak-info')) {
+    // Electron 22 crashes in Notification::Close() with libnotify's portal backend.
+    // Use the already permitted org.freedesktop.Notifications service instead.
+    process.env.NOTIFY_IGNORE_PORTAL = '1';
+  }
   const uid = process.getuid ? process.getuid() : 1000;
   const runtimeDir = process.env.XDG_RUNTIME_DIR || `/run/user/${uid}`;
   if (!process.env.PULSE_SERVER) {
