@@ -23,7 +23,7 @@
     "messaging",
     "linux"
   ],
-  "author": "doandat943",
+  "author": "VN-Linux-Family <developer@vietnamlinuxfamily.net>",
   "license": "MIT",
   "homepage": "https://github.com/VN-Linux-Family/zalo-for-linux",
   "repository": {
@@ -75,7 +75,6 @@
     "npmRebuild": false,
     "linux": {
       "executableName": "zalo",
-      "target": "AppImage",
       "category": "Network",
       "desktop": {
         "entry": {
