@@ -21,6 +21,11 @@ Stops when stdin closes. Logs go to stderr.
            source (src = SSRC), decoded and mixed every 20 ms on the sound card's clock
   --mic / --speaker   PulseAudio source / sink to use (else ZCALL_MIC / ZCALL_SPEAKER, else the default)
   --min-delay MS      least jitter buffer depth (zrtc_config minAudioDelayMs; 100 by default)
+  --max-delay MS      most jitter buffer depth (the smaller of maxAudioDelayMs and
+                      audioJitterMax; 200 when neither is set)
+  --no-aec / --no-ns  zrtcConfig audioEchoCancellation / audioNoiseSuppression off
+  --vad               zrtcConfig audioVoiceDetection on (off unless asked: the
+                      WebRTC voice detector gates the microphone during doubletalk)
 
 Every DIAG_SEC (10 s) the log gets one "diag:" line for the test calls: the
 playout counters of that period, how full the sound card stream was, the
@@ -36,13 +41,23 @@ before Opus; silence while muted), to find where speech breaks up.
 With PipeWire the microphone goes through WebRTC audio processing (echo
 cancellation and noise suppression), as the real engine does
 (zrtc_config audioEchoCancellation / audioNoiseSuppression), and received
-audio is played through it as the echo reference. The high-pass filter is on
-unless --no-high-pass (a group call whose zrtcConfig has audioHighPassFilter
-false). ZCALL_AUDIO_PROCESSING=0 turns processing off. No gain control:
+audio is played through it as the echo reference. Playback is primed before
+the microphone starts: Zalo's AudioDevice starts playout before recording
+whenever AEC is on, so the canceller already has a reference. The high-pass
+filter is on unless --no-high-pass (zrtcConfig audioHighPassFilter false).
+ZCALL_AUDIO_PROCESSING=0 turns processing off. No gain control:
 PipeWire's webrtc.gain_control turns on two digital AGCs at once (AGC1
 adaptive digital + AGC2), which pump the noise up and distort loud speech;
 the real engine uses one analog AGC (AgcManagerDirect, the OS microphone
 volume). Do not turn gain_control on from here.
+
+PipeWire 1.4's libspa-aec-webrtc (the WebRTC 1 / AEC3 build) ignores
+webrtc.delay_agnostic and webrtc.extended_filter, hardcodes desktop AEC at
+high suppression, and defaults voice detection and transient suppression on.
+Those two defaults rasp and gate the microphone while the far end is talking.
+This process turns them off. Echo level, AECM routing and comfort noise have
+no switch in that plugin, so zrtcConfig's audioEchoLevel / audioEchoRouting /
+aecForMobile / audioEchoComfortNoise are not applied here.
 """
 from __future__ import annotations
 
@@ -201,6 +216,12 @@ def switch_speaker(sink, name: str | None):
 # 256): at 512 its sink path broke the sound every 10 ms (1 kHz played as
 # 964.8 Hz, THD+N -3 dB instead of -40 dB, measured on the USB headset
 # 2026-10-09), whatever node.latency or audio.rate was given.
+# delay_agnostic is set false for the old WebRTC AEC2 plugin, which hunts the
+# delay during doubletalk and rasps. PipeWire 1.4's AEC3 build ignores it and
+# aligns playback with capture itself; do not also set buffer.play_delay.
+# voice_detection and transient_suppression default on in that build and are
+# what gates and rasps the near end while the far end talks. Zalo's desktop
+# path does not enable either.
 EC_CONF = """context.properties = { log.level = 0 }
 context.spa-libs = {
     audio.convert.* = audioconvert/libspa-audioconvert
@@ -216,10 +237,12 @@ context.modules = [
         library.name = aec/libspa-aec-webrtc
         aec.args = {
             webrtc.gain_control = false
-            webrtc.noise_suppression = true
+            webrtc.noise_suppression = @NS@
             webrtc.high_pass_filter = @HPF@
+            webrtc.voice_detection = @VAD@
+            webrtc.transient_suppression = false
+            webrtc.delay_agnostic = false
             webrtc.extended_filter = true
-            webrtc.delay_agnostic = true
         }
         audio.rate = 16000
         audio.channels = 1
@@ -323,11 +346,13 @@ class Processing:
     echo reference) that exist as long as the process. The system's default
     devices stay as they are."""
 
-    def __init__(self, high_pass=True):
+    def __init__(self, high_pass=True, noise_suppression=True, voice_detection=False):
         self.tag = f"zcall_ec_{os.getpid()}"
         self.source = self.tag + "_source"
         self.sink = self.tag + "_sink"
         self.high_pass = bool(high_pass)
+        self.noise_suppression = bool(noise_suppression)
+        self.voice_detection = bool(voice_detection)
         self.proc = None
         self.conf = None
 
@@ -336,7 +361,10 @@ class Processing:
         self.stop()
         target = lambda n: f'target.object = "{n}" node.dont-reconnect = true' if n else ""  # noqa: E731
         conf = (EC_CONF.replace("@TAG@", self.tag).replace("@MIC@", target(mic))
-                .replace("@SPEAKER@", target(speaker)).replace("@HPF@", "true" if self.high_pass else "false"))
+                .replace("@SPEAKER@", target(speaker))
+                .replace("@HPF@", "true" if self.high_pass else "false")
+                .replace("@NS@", "true" if self.noise_suppression else "false")
+                .replace("@VAD@", "true" if self.voice_detection else "false"))
         fd, self.conf = tempfile.mkstemp(prefix="zcall-ec-", suffix=".conf")
         with os.fdopen(fd, "w") as f:
             f.write(conf)
@@ -468,7 +496,9 @@ class _Stream:
       builds up the buffer again;
     - the buffer depth follows the measured arrival jitter (min..max frames);
       too much buffered (a burst, or the sender's clock faster than our card)
-      drops a quiet frame now and then, like NetEq's Accelerate.
+      is shortened by one pitch period with overlap-add, like NetEq's
+      Accelerate. A whole 20 ms frame is never cut out: that click is the
+      crackle heard on a two-way call.
     """
 
     MIN_TARGET = 5        # 100 ms: zrtc_config minAudioDelayMs (macOS NetEq's floor)
@@ -522,38 +552,43 @@ class _Stream:
         self.carry = pcm[FRAME_BYTES:]
         return pcm[:FRAME_BYTES].ljust(FRAME_BYTES, b"\0")
 
-    def pull(self) -> bytes | None:
-        """The next 20 ms, or None (not playing)."""
-        if self.carry:
-            return self._take(self.carry)
-        if not self.playing:
-            if len(self.packets) < self.target:
-                return None
-            self.playing = True
-            first = min(self.packets)
-            if self.next is None or first > self.next:
-                self.next = first
-        self.since_drop += 1
-        if self.next in self.packets:
-            pcm = self._decode(self.packets.pop(self.next))
+    def _emit(self, pcm: bytes) -> bytes:
+        """One frame from a short carry plus newly decoded samples."""
+        return self._take(self.carry + pcm)
+
+    def _ensure(self, n_bytes: int) -> bool:
+        """Decode ahead until `carry` holds n_bytes, or the next packet is missing."""
+        while len(self.carry) < n_bytes and self.next in self.packets:
+            self.carry += self._decode(self.packets.pop(self.next))
             self.next += 1
             self.expand = 0
             self.stats["opus_ok"] += 1
-            span = max(self.packets) - self.next + 1 if self.packets else 0
-            # Too much buffered: drop this frame if it is quiet, or any frame
-            # when far too much (after a stall). At most one per 200 ms. The
-            # next frame fades in over the dropped one's first 5 ms, so the
-            # wave goes on from what was played: no click where 20 ms are cut
-            # (macOS NetEq time-stretches instead, webrtc::Accelerate).
-            if span > self.target + 2 and self.since_drop >= 10 and self.next in self.packets \
-                    and (span > self.target + 8 or _rms(pcm) < 300):
-                self.since_drop = 0
-                self.stats["accelerate"] += 1
-                if _rms(pcm) >= 300:
-                    self.stats["accelerate_loud"] += 1
-                nxt = self.pull()
-                return _crossfade(pcm[:FRAME_BYTES], nxt) if nxt else self._take(pcm)
-            return self._take(pcm)
+        return len(self.carry) >= n_bytes
+
+    def pull(self) -> bytes | None:
+        """The next 20 ms, or None (not playing)."""
+        if not self.playing:
+            if not self.carry and len(self.packets) < self.target:
+                return None
+            self.playing = True
+            if self.packets:
+                first = min(self.packets)
+                if self.next is None or first > self.next:
+                    self.next = first
+        self.since_drop += 1
+        span = max(self.packets) - self.next + 1 if self.packets else 0
+        # Far over the target (a burst): shrink every frame. A little over:
+        # at most once per 200 ms, same as before, but by one pitch period.
+        eager = span > self.target + 8
+        if span > self.target + 2 and (eager or self.since_drop >= 10) and self._ensure(FRAME_BYTES * 2):
+            self.since_drop = 0
+            self.stats["accelerate"] += 1
+            if _rms(self.carry[:FRAME_BYTES]) >= 300:
+                self.stats["accelerate_loud"] += 1
+            played, self.carry = _wsola_shrink(self.carry)
+            return played
+        if self._ensure(FRAME_BYTES):
+            return self._take(self.carry)
         if self.packets and (len(self.packets) >= self.target or self.expand >= self.MAX_EXPAND):
             # A hole, and the buffer waited long enough: the packet is lost.
             self.expand = 0
@@ -562,37 +597,67 @@ class _Stream:
             self.next += 1
             if nxt is not None:
                 self.stats["fec"] += 1
-                return self._take(self._decode(nxt, fec=True))
+                return self._emit(self._decode(nxt, fec=True))
             self.stats["plc"] += 1
-            return self._take(self._decode(None))
+            return self._emit(self._decode(None))
         # Not there yet: conceal and wait for it (the delay grows by 20 ms;
         # Accelerate takes it back later), then go quiet and buffer up again.
         self.stats["underrun"] += 1
         if self.expand < self.MAX_EXPAND:
             self.expand += 1
             self.stats["plc"] += 1
-            return self._take(self._decode(None))
+            return self._emit(self._decode(None))
         self.expand = 0
         self.playing = False
         return None
 
 
-XFADE = 80  # samples (5 ms)
-
-
-def _crossfade(a: bytes, b: bytes) -> bytes:
-    """b, with its first XFADE samples faded in over a's."""
-    x, y = array("h", a), array("h", b)
-    n = min(XFADE, len(x), len(y))
-    for i in range(n):
-        w = (i + 1) / (n + 1)
-        y[i] = int(x[i] * (1 - w) + y[i] * w)
-    return y.tobytes()
-
-
 def _rms(pcm: bytes) -> float:
     a = array("h", pcm)
     return math.sqrt(sum(v * v for v in a) / len(a)) if a else 0.0
+
+
+def _pitch_lag(samples: array) -> int:
+    """Lag, in samples, of one pitch period inside 2.5..10 ms.
+
+    NetEq's Accelerate deletes one period and overlap-adds across the cut.
+    The window is the first 5 ms. A 1 kHz tone (period 16) matches a harmonic
+    inside the range, so the wave stays continuous."""
+    window = 80
+    best = None
+    best_lag = 80
+    limit = min(160, len(samples) - window - 1)
+    if limit < 40:
+        return 80
+    for lag in range(40, limit + 1, 2):
+        score = 0
+        for i in range(window):
+            score += samples[i] * samples[i + lag]
+        if best is None or score > best:
+            best = score
+            best_lag = lag
+    return best_lag
+
+
+def _wsola_shrink(pcm: bytes) -> tuple[bytes, bytes]:
+    """Shorten pcm by one pitch period. Returns (20 ms to play, the rest).
+
+    40 ms in becomes about 30-37 ms out: one frame now, the leftover stays
+    in the stream carry. The join is an overlap-add, so the sample stream
+    does not jump the way cutting a whole 20 ms frame does."""
+    samples = array("h", pcm)
+    if len(samples) < FRAME * 2:
+        return pcm[:FRAME_BYTES].ljust(FRAME_BYTES, b"\0"), pcm[FRAME_BYTES:]
+    lag = _pitch_lag(samples)
+    out = array("h", [0]) * (len(samples) - lag)
+    for i in range(lag):
+        w = (i + 1) / (lag + 1)
+        mixed = samples[i] * (1 - w) + samples[i + lag] * w
+        out[i] = int(max(-32768, min(32767, round(mixed))))
+    rest = len(samples) - 2 * lag
+    out[lag:lag + rest] = array("h", samples[2 * lag:])
+    raw = out.tobytes()
+    return raw[:FRAME_BYTES], raw[FRAME_BYTES:]
 
 
 class Playout:
@@ -604,13 +669,22 @@ class Playout:
     IDLE_SEC = 5    # a source that sent nothing for this long is forgotten
     REPORT_SEC = 30
 
-    def __init__(self, sink, depth: int = 10, min_delay_ms: int = 100):
+    # Two full-scale voices summed would clip at int16. Hold the mix to about
+    # -2 dBFS and release slowly, as OutputMixer's limiter does. A hard clip
+    # at the sum is the group-call crackle.
+    LIMIT = 26000
+
+    def __init__(self, sink, depth: int = 10, min_delay_ms: int = 100, max_delay_ms: int = 0):
         self.sink = sink
-        self.depth = depth
         self.min_target = max(2, math.ceil(min_delay_ms / 20))
+        if max_delay_ms and max_delay_ms > 0:
+            self.max_target = max(self.min_target, math.ceil(max_delay_ms / 20))
+        else:
+            self.max_target = max(self.min_target, depth)
         # For the diag line: card stream fill (ms) and the slowest mix, per period.
         self.dev_min = self.dev_max = None
         self.mix_max = 0.0
+        self._lim = 1.0
         self.opus = load_opus()
         self.sources = {}  # src -> _Stream
         self.lock = threading.Lock()
@@ -624,17 +698,36 @@ class Playout:
         with self.lock:
             s = self.sources.get(source)
             if s is None:
-                s = self.sources[source] = _Stream(self.opus, self.depth, self.stats, self.min_target)
+                s = self.sources[source] = _Stream(self.opus, self.max_target, self.stats, self.min_target)
                 log(f"playout: new source {source} (buffer {s.target * 20}..{s.max_target * 20} ms)")
             s.push(idx, payload, now)
 
+    def _limit(self, acc: list[int], voices: int) -> bytes:
+        if voices < 2:
+            out = array("h", (max(-32768, min(32767, v)) for v in acc))
+            self._lim += (1.0 - self._lim) * 0.1
+            return out.tobytes()
+        peak = max((abs(v) for v in acc), default=0)
+        target = 1.0 if peak <= self.LIMIT else self.LIMIT / peak
+        if target < self._lim:
+            self._lim = target
+        else:
+            self._lim += (target - self._lim) * 0.1
+        g = self._lim
+        out = array("h")
+        for v in acc:
+            s = int(v * g)
+            out.append(32767 if s > 32767 else -32768 if s < -32768 else s)
+        return out.tobytes()
+
     def _mix(self):
         now = time.monotonic()
-        out = None
+        acc = None
+        voices = 0
         with self.lock:
             for src in list(self.sources):
                 s = self.sources[src]
-                if now - s.last > self.IDLE_SEC and not s.packets:
+                if now - s.last > self.IDLE_SEC and not s.packets and not s.carry:
                     del self.sources[src]
                     log(f"playout: source {src} gone")
                     continue
@@ -642,14 +735,16 @@ class Playout:
                 if pcm is None:
                     continue
                 frame = array("h", pcm)
-                if out is None:
-                    out = frame
+                voices += 1
+                if acc is None:
+                    acc = [int(v) for v in frame]
                 else:
                     for i in range(FRAME):
-                        v = out[i] + frame[i]
-                        out[i] = 32767 if v > 32767 else -32768 if v < -32768 else v
+                        acc[i] += frame[i]
         self.stats["mixed"] += 1
-        return out.tobytes() if out is not None else bytes(FRAME_BYTES)
+        if acc is None:
+            return bytes(FRAME_BYTES)
+        return self._limit(acc, voices)
 
     def _report(self):
         with self.lock:
@@ -990,6 +1085,23 @@ def encoder_loop(args, opus, muted, out, lock, mic, guard=None):
             log("first microphone frame encoded")
 
 
+def prime_playback(sink, frames: int = 5):
+    """Write silence before the microphone opens.
+
+    Zalo starts playout, then recording, whenever AEC is on. The canceller
+    then already has a far-end reference. Opening the mic first makes the
+    delay jump at the moment the other side speaks, which is the two-way rasp.
+    """
+    silence = bytes(FRAME_BYTES)
+    try:
+        for _ in range(frames):
+            sink.write(silence)
+    except (BrokenPipeError, OSError, ValueError) as e:
+        log("playout prime failed:", e)
+        return
+    log(f"playout primed {frames * 20} ms before the microphone")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     # 1-1 default. A group call passes zrtcConfig.audioBitrate (kbps * 1000) instead.
@@ -998,8 +1110,12 @@ def main():
     ap.add_argument("--loss", type=int, default=5, help="expected packet loss %% (Opus FEC)")
     ap.add_argument("--no-fec", action="store_true", help="audioFecInband false: FEC off, expected loss 0")
     ap.add_argument("--no-high-pass", action="store_true", help="audioHighPassFilter false")
-    ap.add_argument("--jitter", type=int, default=10, help="jitter buffer depth in 20 ms frames")
+    ap.add_argument("--no-ns", action="store_true", help="audioNoiseSuppression false")
+    ap.add_argument("--no-aec", action="store_true", help="audioEchoCancellation false")
+    ap.add_argument("--vad", action="store_true", help="audioVoiceDetection true")
+    ap.add_argument("--jitter", type=int, default=10, help="jitter buffer depth in 20 ms frames, used when --max-delay is absent")
     ap.add_argument("--min-delay", type=int, default=100, help="least jitter buffer depth in ms (minAudioDelayMs)")
+    ap.add_argument("--max-delay", type=int, default=0, help="most jitter buffer depth in ms (maxAudioDelayMs / audioJitterMax)")
     ap.add_argument("--device", help="ALSA device (default: PulseAudio if running)")
     ap.add_argument("--out", type=Path, help="write received audio to this file instead of playing")
     ap.add_argument("--tone", action="store_true", help="send a 440 Hz tone instead of the microphone")
@@ -1014,7 +1130,11 @@ def main():
     # The devices picked (None: the default); with processing, what it is attached to.
     chosen = {"mic": present(args.mic, "sources") if pulse else None,
               "speaker": present(args.speaker, "sinks") if pulse else None}
-    proc = Processing(high_pass=not args.no_high_pass) if pulse and os.environ.get("ZCALL_AUDIO_PROCESSING", "1") != "0" else None
+    # --no-aec skips the module entirely: PipeWire 1.4's plugin cannot turn the
+    # canceller off while keeping the noise suppressor.
+    want_proc = pulse and os.environ.get("ZCALL_AUDIO_PROCESSING", "1") != "0" and not args.no_aec
+    proc = Processing(high_pass=not args.no_high_pass, noise_suppression=not args.no_ns, voice_detection=args.vad) if want_proc else None
+    log(f"audio config: aec {not args.no_aec} ns {not args.no_ns} high-pass {not args.no_high_pass} vad {args.vad} delay {args.min_delay}..{args.max_delay or args.jitter * 20} ms")
 
     def start_processing() -> bool:
         return proc.start(chosen["mic"] or pulse_mic(), chosen["speaker"]) if proc else False
@@ -1032,8 +1152,11 @@ def main():
     if sink is None:
         player = " ".join(shlex.quote(a) for a in speaker_command(speaker_name)) if pulse else None
         sink = Sink(args.out, player, args.device)
+    # Speaker reference before the microphone, then the playout clock.
+    if processed and isinstance(sink, PulseOut):
+        prime_playback(sink)
     # 1-1 and group calls alike (--mix only says several sources are expected).
-    jitter = Playout(sink, depth=args.jitter, min_delay_ms=args.min_delay)
+    jitter = Playout(sink, depth=args.jitter, min_delay_ms=args.min_delay, max_delay_ms=args.max_delay)
     muted = threading.Event()
     out = os.fdopen(sys.stdout.fileno(), "wb", buffering=0)
     lock = threading.Lock()
@@ -1093,10 +1216,13 @@ def main():
                     chosen["speaker"] = present(name, "sinks")
                 if processed:
                     # Re-attach the processing; its devices come back under the same names.
+                    # Speaker first, then the microphone, same order as the start of the call.
                     processed = start_processing()
+                    switch_speaker(sink, proc.sink if processed else chosen["speaker"])
+                    if processed and isinstance(sink, PulseOut):
+                        prime_playback(sink)
                     if mic:
                         mic.switch(proc.source if processed else chosen["mic"])
-                    switch_speaker(sink, proc.sink if processed else chosen["speaker"])
                 elif which == ord("i") and mic:
                     mic.switch(chosen["mic"])
                 elif which == ord("o"):
