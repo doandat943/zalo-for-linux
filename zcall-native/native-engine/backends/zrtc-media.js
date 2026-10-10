@@ -157,6 +157,7 @@ class ZrtcMediaBackend extends EventEmitter {
     this.groupCameraOn = false; // ZaviPing "sending video" bit (ZCALL_GROUP_CAMERA=0: never)
     this.rtcp = null; // RtcpFeedback, 1-1 calls only (set in onNegotiated)
     this.sendRate = null; // SendRate, 1-1 calls only: the camera's rung of the server ladder
+    this.downPrev = null; // last audio reception counters (_downlinkLoss)
     this.groupRtcpIn = null; // group: RTCP kinds the SFU sent (_noteGroupRtcp)
     this.vOut = []; // 1-1 video packets waiting for the pacer: [packet, destination, label]
     this.vOutTimer = null;
@@ -600,6 +601,7 @@ class ZrtcMediaBackend extends EventEmitter {
     this._send(wrapMediaPacket({ msgType: MSG_TYPES.AUDIO_RTP, token: this.serverToken, payload: rtp }), this.activeServer, 'audio');
     // Same packet over P2P once the peer reached us: it drops duplicates by seq.
     if (this.p2pPath) this._send(wrapP2pAudio({ role: this.params.role, callId: this.params.callId, rtp }), this.p2pPath, 'P2P audio');
+    if (this.sendRate) this.sendRate.onSent(this.twSeq);
     this.counters.tx++;
     this.audioOctets += opus.length;
     this._noteAudioTx();
@@ -657,6 +659,7 @@ class ZrtcMediaBackend extends EventEmitter {
       }
       this.vTxWin.bytes += rtp.length;
       this.vTxWin.pkts++;
+      if (this.sendRate) this.sendRate.onSent(this.twSeq);
       this.vSeq = (this.vSeq + 1) & 0xffff;
       if (this.vSeq === 0) this.vRoc++;
       this.twSeq = (this.twSeq + 1) & 0xffff;
@@ -876,6 +879,18 @@ class ZrtcMediaBackend extends EventEmitter {
     for (const pk of this.rtcp.twccPackets()) this._sendRtcp(false, pk);
   }
 
+  // Share of the phone's audio packets (50 a second) that did not arrive since the
+  // last call, from the reception counters (read only: the reports keep their own).
+  _downlinkLoss() {
+    const a = this.rtcp && this.rtcp.audio;
+    if (!a || !a.started) return null;
+    const expected = a.cycles + a.maxSeq - a.baseSeq + 1;
+    const prev = this.downPrev || { expected, received: a.received };
+    this.downPrev = { expected, received: a.received };
+    const exp = expected - prev.expected, rec = a.received - prev.received;
+    return exp >= 10 ? Math.max(0, Math.min(1, (exp - rec) / exp)) : null;
+  }
+
   // The phone's RTCP: its SR times for our reports, its feedback on our packets for the send rate.
   _peerRtcp(kind, buf) {
     if (this.group) this._noteGroupRtcp(kind, buf);
@@ -887,7 +902,7 @@ class ZrtcMediaBackend extends EventEmitter {
     if (!this.rtcp) return;
     const now = Date.now();
     if (this.sendRate) {
-      this.sendRate.tick(now - this.vTxWin.lastTx < 1500);
+      this.sendRate.tick(now - this.vTxWin.lastTx < 1500, this._downlinkLoss());
     }
     if (this.group) {
       // Transport-cc only: the reception reports of RtcpFeedback follow one stream,
