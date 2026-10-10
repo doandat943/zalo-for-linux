@@ -102,8 +102,9 @@ async function extractDMG() {
       throw new Error('7z is required for DMG extraction.');
     }
 
-    logger.info(`Extracting app.asar from ${selectedFile.name}...`);
-    const extractCommand = `7z x "${dmgPath}" "Zalo*/Zalo.app/Contents/Resources/app.asar*"`;
+    logger.info(`Extracting app.asar and the call helper from ${selectedFile.name}...`);
+    // ZaloCall (macOS): only for its icons and sounds (scripts/extract-zcall-assets.js).
+    const extractCommand = `7z x "${dmgPath}" "Zalo*/Zalo.app/Contents/Resources/app.asar*" "Zalo*/Zalo.app/Contents/ZaloHelper.app/Contents/MacOS/ZaloCall"`;
 
     try {
       execSync(extractCommand, { cwd: TEMP_DIR, stdio: 'pipe' });
@@ -202,7 +203,7 @@ async function extractWindows() {
     process.env.ZALO_WIN_VERSION = version;
     logger.success('Windows plugins extracted successfully');
   } catch (error) {
-    logger.warn('Windows extraction failed, calls unavailable: ' + error.message);
+    logger.warn('Windows extraction failed, OCR unavailable: ' + error.message);
   }
 }
 
@@ -275,8 +276,9 @@ async function extractAppAsar() {
   const { main: patchZcallCallgate } = require('./patches/patch-zcall-callgate');
   await patchZcallCallgate();
 
-  const { main: patchZcallCallv2 } = require('./patches/patch-zcall-callv2');
-  await patchZcallCallv2();
+  // Calls run on the native engine (zcall-native/), no Wine.
+  const { main: patchZcallNative } = require('./patches/patch-zcall-native');
+  await patchZcallNative();
 
   // const { main: patchFixImageResizeLinux } = require('./patches/patch-fix-image-resize-linux');
   // await patchFixImageResizeLinux();
@@ -316,6 +318,15 @@ async function extractAppAsar() {
 
   const { main: patchflatpakFileTransfer } = require('./patches/patch-flatpak-file-transfer');
   await patchflatpakFileTransfer();
+
+  // The call window's icons, sounds and fonts, from the macOS app.
+  await require('./extract-zcall-assets').main();
+
+  // Without it Zalo would look for ZaloCall.exe / ZaloHelper.app: no calls at all.
+  const mainJs = path.join(APP_DIR, 'main-dist', 'main.js');
+  if (!fs.existsSync(mainJs) || !fs.readFileSync(mainJs, 'utf8').includes('ZCALL_ENGINE_JS')) {
+    throw new Error('native call patch missing from app/main-dist/main.js');
+  }
 }
 
 function commandExists(command) {

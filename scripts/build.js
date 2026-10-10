@@ -6,7 +6,6 @@ const logger = require('./utils/logger');
 const BASE_DIR = path.join(__dirname, '..');
 const APP_DIR = path.join(BASE_DIR, 'app');
 const DIST_DIR = path.join(BASE_DIR, 'dist');
-const TEMP_DIR = path.join(BASE_DIR, 'temp');
 
 let ZALO_VERSION = null;
 const builtFiles = [];
@@ -28,30 +27,12 @@ async function main() {
       logger.warn('package.json.bak not found, version will be unknown');
     }
 
-    // A leftover bundled runtime (e.g. from a crashed previous run) would
-    // silently bloat the standard variants — start clean; Phase 3 re-bundles.
-    fs.rmSync(path.join(APP_DIR, 'native', 'wine-runtime'), { recursive: true, force: true });
-
-    // Check architecture for Full variants
-    const isArm64 = process.arch === 'arm64' || process.arch === 'aarch64';
+    // Calls run on the native engine (zcall-native/, shipped by extraFiles) in
+    // both variants: no Wine runtime, no Full variants.
 
     // Phase 1: Build original Zalo
     logger.step('PHASE 1: Building Zalo (Original)');
     await build('(Original)', '');
-
-    // Phase 1.5: Full variant of the original (no ZaDark) — wine bundled.
-    // This is only built on x86_64, because zcall is not supported on aarch64.
-    if (!isArm64) {
-      logger.step('PHASE 1.5: Building Zalo (Full — wine bundled, no ZaDark)');
-      await bundleWineRuntime();
-      await build('(Full — wine bundled)', '-PlainFull');
-      // Remove the runtime again — the standard variants must not contain it,
-      // and a leftover from a previous run would silently bloat them (and the
-      // next Full build) to the Full size.
-      fs.rmSync(path.join(APP_DIR, 'native', 'wine-runtime'), { recursive: true, force: true });
-    } else {
-      logger.info('PHASE 1.5: Skipping Full variant build on aa64, zcall is not supported on this architecture');
-    }
 
     // Phase 2: Apply ZaDark integration and build final product
     logger.step('PHASE 2: Building Zalo (with ZaDark)');
@@ -59,17 +40,6 @@ async function main() {
     // Patch ZaDark directly into APP_DIR
     await integrateZaDark();
     await build('(with ZaDark)', '-ZaDark');
-
-    // Phase 3: Full variant of the ZaDark build — wine bundled, so the call
-    // feature works out of the box with no first-run download.
-    if (!isArm64) {
-      logger.step('PHASE 3: Building Zalo (Full — wine bundled, with ZaDark)');
-      await bundleWineRuntime();
-      await build('(Full — wine bundled)', '-Full');
-      fs.rmSync(path.join(APP_DIR, 'native', 'wine-runtime'), { recursive: true, force: true });
-    } else {
-      logger.info('PHASE 3: Skipping Full with ZaDark variant build on aa64');
-    }
 
     // Final summary
     logger.step('BUILD SUMMARY');
@@ -86,56 +56,29 @@ async function main() {
   }
 }
 
-// Keep in sync with WINE_DOWNLOAD_URL in plugins/zcall-bridge/index.js
-const WINE_DOWNLOAD_URL =
-  'https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-amd64.tar.xz';
+function jsFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name);
+    return e.isDirectory() ? jsFiles(p) : (p.endsWith('.js') ? [p] : []);
+  });
+}
 
-async function bundleWineRuntime() {
-  // we will skip the wine bundle if on aarch64 because zcall is currently not supported on it
-  if (process.arch === 'arm64' || process.arch === 'aarch64') {
-    logger.info('skipping wine bundle on aa64, zcall is not supported on this architecture');
-    return;
-  }
-
-  if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR, { recursive: true });
-  }
-
-  const target = path.join(APP_DIR, 'native', 'wine-runtime');
-  if (fs.existsSync(path.join(target, 'bin', 'wine'))) {
-    logger.dim('wine runtime already bundled, skipping download');
-    return;
-  }
-  const tarball = path.join(TEMP_DIR, 'wine-bundle.tar.xz');
-  try {
-    if (!fs.existsSync(tarball)) {
-      logger.info('Downloading portable wine for the Full variant...');
-      try {
-        execSync(`curl -L --fail -o "${tarball}" "${WINE_DOWNLOAD_URL}"`, {
-          cwd: BASE_DIR, stdio: 'inherit'
-        });
-      } catch(err) {
-        // remove partial downloads
-        if (fs.existsSync(tarball)) {
-          fs.unlinkSync(tarball);
-        }
-        throw new Error(`Download failed: ${err.message}`);
+// electron-builder's extraFiles filter decides what zcall-native/ ships. The
+// engine dies at startup if a file it requires was filtered out, so check the
+// packaged copy: every relative require resolves, and audio-io.py's opus_play.
+function checkEnginePackaged(dir) {
+  const missing = [];
+  if (!fs.existsSync(dir)) throw new Error('call engine missing from the package: ' + dir);
+  for (const file of jsFiles(dir)) {
+    const src = fs.readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/require\((['"])(\.{1,2}\/[^'"]+)\1\)/g)) {
+      try { require.resolve(path.resolve(path.dirname(file), m[2])); } catch (_) {
+        missing.push(`${path.relative(dir, file)} requires ${m[2]}`);
       }
-    } else {
-      logger.info('Using cached portable wine tarball from temp directory...');
     }
-    fs.mkdirSync(target, { recursive: true });
-    execSync(`tar -xf "${tarball}" -C "${target}" --strip-components=1`, {
-      cwd: BASE_DIR, stdio: 'pipe'
-    });
-  } catch (error) {
-    logger.error('Failed to bundle wine runtime:', error.message);
-    throw error;
   }
-  if (!fs.existsSync(path.join(target, 'bin', 'wine'))) {
-    throw new Error('wine binary not found after extract');
-  }
-  logger.success('wine runtime bundled into app/native/wine-runtime');
+  if (!fs.existsSync(path.join(dir, 'tools', 'opus_play.py'))) missing.push('audio-io.py imports tools/opus_play.py');
+  if (missing.length) throw new Error('call engine incomplete in the package: ' + missing.join('; '));
 }
 
 async function integrateZaDark() {
@@ -177,9 +120,8 @@ async function build(buildName = '', outputSuffix = '') {
     let buildCommand;
     let zadarkVersion = null;
 
-    if (outputSuffix === '-ZaDark' || outputSuffix === '-Full') {
-      // Read ZaDark version for custom naming (the Full variant also builds
-      // on the ZaDark-integrated app directory)
+    if (outputSuffix === '-ZaDark') {
+      // Read ZaDark version for custom naming
       const zadarkPackagePath = path.join(BASE_DIR, 'plugins', 'zadark', 'package.json');
       zadarkVersion = 'unknown';
 
@@ -192,16 +134,10 @@ async function build(buildName = '', outputSuffix = '') {
         }
       }
 
-      const variantSuffix = outputSuffix === '-Full' ? '-Full' : '';
-      artifactName = `Zalo-${ZALO_VERSION}+ZaDark-${zadarkVersion}-${commitHash}${variantSuffix}${archSuffix}.AppImage`;
+      artifactName = `Zalo-${ZALO_VERSION}+ZaDark-${zadarkVersion}-${commitHash}${archSuffix}.AppImage`;
       buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
       buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
       logger.info(`Building ${buildName} with Zalo: ${ZALO_VERSION}, ZaDark: ${zadarkVersion}, Commit: ${commitHash}`);
-    } else if (outputSuffix === '-PlainFull') {
-      artifactName = `Zalo-${ZALO_VERSION}-Original-${commitHash}-Full${archSuffix}.AppImage`;
-      buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
-      buildCommandst2 = `chmod +x "${St2script}" && "${St2script}" "${ZALO_VERSION}" "${artifactName}" "${DIST_DIR}"`;
-      logger.info(`Building ${buildName} with Zalo: ${ZALO_VERSION}, Commit: ${commitHash}`);
     } else {
       artifactName = `Zalo-${ZALO_VERSION}-Original-${commitHash}${archSuffix}.AppImage`;
       buildCommand = `npx electron-builder --linux --config.linux.artifactName="${artifactName}" -c.extraMetadata.version=${ZALO_VERSION} --publish=never`;
@@ -211,7 +147,7 @@ async function build(buildName = '', outputSuffix = '') {
     // Write build-info.json to the app directory so the AppImage will contain its metadata
     const buildInfo = {
       version: ZALO_VERSION,
-      zadarkVersion: (outputSuffix === '-ZaDark' || outputSuffix === '-Full') ? zadarkVersion : null,
+      zadarkVersion: outputSuffix === '-ZaDark' ? zadarkVersion : null,
       commit: commitHash,
       buildDate: new Date().toISOString()
     };
@@ -227,14 +163,14 @@ async function build(buildName = '', outputSuffix = '') {
     logger.dim(`Command: ${buildCommand}`);
     logger.dim(`Command (Stage 2): ${buildCommandst2}`);
 
-    // Capture build output to get file information
-    const combinedCommand = `${buildCommand} && ${buildCommandst2}`;
-
-    const buildOutput = execSync(combinedCommand, {
-      stdio: 'pipe',
-      cwd: path.join(BASE_DIR),
-      encoding: 'utf8'
-    });
+    // Capture build output to get file information. Between the two stages,
+    // check that the unpacked app carries the whole call engine.
+    let buildOutput = execSync(buildCommand, { stdio: 'pipe', cwd: path.join(BASE_DIR), encoding: 'utf8' });
+    const unpacked = fs.readdirSync(DIST_DIR).filter((d) => /^linux(-arm64)?-unpacked$/.test(d));
+    if (!unpacked.length) throw new Error('electron-builder output (linux-unpacked) not found in dist/');
+    for (const d of unpacked) checkEnginePackaged(path.join(DIST_DIR, d, 'zcall-native'));
+    logger.success('call engine files are all in the package');
+    buildOutput += execSync(buildCommandst2, { stdio: 'pipe', cwd: path.join(BASE_DIR), encoding: 'utf8' });
 
     // Parse build output to find AppImage file
     const appImageMatch = buildOutput.match(/file=(dist\/.*\.AppImage)/);
@@ -266,7 +202,7 @@ async function build(buildName = '', outputSuffix = '') {
         logger.dim(`SHA256: ${fileSha256}`);
         
         builtFiles.push({
-          type: outputSuffix === '-Full' ? '🍷 Full (ZaDark)' : outputSuffix === '-PlainFull' ? '🍷 Full' : outputSuffix === '-ZaDark' ? '🎨 ZaDark' : '📦 Original',
+          type: outputSuffix === '-ZaDark' ? '🎨 ZaDark' : '📦 Original',
           name: appImageName,
           sizeStr
         });
@@ -279,7 +215,7 @@ async function build(buildName = '', outputSuffix = '') {
 
     // Export build info to GitHub Actions
     if (process.env.GITHUB_OUTPUT) {
-      const prefix = outputSuffix === '-PlainFull' ? 'plainfull_' : outputSuffix === '-Full' ? 'full_' : outputSuffix === '-ZaDark' ? 'zadark_' : 'original_';
+      const prefix = outputSuffix === '-ZaDark' ? 'zadark_' : 'original_';
 
       // Export build-specific info
       const specificOutputs = [

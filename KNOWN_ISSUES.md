@@ -8,8 +8,8 @@ This document tracks current limitations and historical issues that have been ad
 
 ## ⚠️ Current Issues & Limitations
 
-- **Partly-fixed: Audio/Video Calling on ARM64:** 
-  Audio/video calling is supported on x86_64 via Wine TCP-to-named-pipe translation (`zcall-bridge`). However, calls are currently **not available on aarch64 (ARM64)** because the official Windows `ZaloCall.exe` and helper native binaries only support 32-bit/64-bit x86. See [PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62) and [Issue #70](https://github.com/VN-Linux-Family/zalo-for-linux/issues/70).
+- **Calls on ARM64:** 
+  Calls now run on the native engine (`zcall-native/`, Node.js + Python, nothing x86-only) instead of Wine and `ZaloCall.exe` ([PR #62](https://github.com/VN-Linux-Family/zalo-for-linux/pull/62), [Issue #70](https://github.com/VN-Linux-Family/zalo-for-linux/issues/70)), so aarch64 is no longer ruled out, but calls have not been tried on aarch64 yet.
 
 ---
 
