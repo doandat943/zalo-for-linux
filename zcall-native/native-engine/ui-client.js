@@ -90,6 +90,12 @@ class ElectronCallUi {
     this._send({ type: 'keyframe' });
   }
 
+  // The peer's name changed (its alias came after the window opened).
+  rename(name) {
+    if (!this.state || !name) return;
+    this._state({ ...this.state, name });
+  }
+
   // Group: the members (src = UID, name, avatar, muted, camOff, state) for the tiles.
   members(list) {
     if (!this.state) return;

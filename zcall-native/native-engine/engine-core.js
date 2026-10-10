@@ -135,7 +135,9 @@ class EngineCore {
       case 'request': return this._onRequest(f.command, data);
       case 'control': return this._onControl(data.act, data);
       case 'recvSignal': return this._onRecvSignal(f.command, data);
-      case 'response': return; // answers to our requests (getAliasName, ...): nothing to do
+      case 'response': // answers to our requests: the alias name; the others need nothing
+        if (f.command === 'getAliasName') this._onAliasName(data);
+        return;
       default: this.log('unhandled type', f.type, f.command);
     }
   }
@@ -188,6 +190,22 @@ class EngineCore {
     this.emit({ type: 'sendSignal', command: 401, data: { callId: c.callId, calleeId: c.peerId, codec: '[]\n', type: c.type } });
     if (c.type === 3) this._camMic();
     this.ui.open({ title: c.peerName || 'Zalo', text: 'Đang gọi…', avatar: c.avatar, video: c.type === 3 });
+    // The name the user saved for this contact (makeCall gives the real name).
+    if (c.peerId) this.emit({ type: 'request', command: 'getAliasName', data: { noisedId: c.peerId } });
+  }
+
+  // Zalo's answer to getAliasName {noisedId, aliasName}: the contact's alias ("tên gợi
+  // nhớ") replaces the real name (incoming: params.Dname; outgoing: makeCall's
+  // partner.name) in the call window and the incoming notice, as macOS
+  // ZCallInfo::receiveAliasName -> updatePartnerAliasName. Before this the answer was
+  // dropped and both showed the real name (reported 2026-10-10).
+  _onAliasName(d) {
+    const c = this.call;
+    const alias = String((d && d.aliasName) || '').trim();
+    if (!c || c.group || !alias || String(d.noisedId || '') !== c.peerId || alias === c.peerName) return;
+    c.peerName = alias;
+    this.log('alias name for the peer received');
+    if (typeof this.ui.rename === 'function') this.ui.rename(alias);
   }
 
   // Our screen replaces the camera in the video stream. A 1-1 call tells the
