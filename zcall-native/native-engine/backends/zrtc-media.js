@@ -554,11 +554,21 @@ class ZrtcMediaBackend extends EventEmitter {
     const minDelay = Number(this.params.config && this.params.config.minAudioDelayMs);
     if (minDelay > 0) args.push('--min-delay', String(Math.trunc(minDelay)));
     if (process.env.ZCALL_AUDIO_ARGS) args.push(...process.env.ZCALL_AUDIO_ARGS.split(' ').filter(Boolean));
-    else if (this.group) {
-      const audioArgs = groupAudioArgs(this.params.config);
-      if (audioArgs.length) {
-        args.push(...audioArgs);
-        this.log('media: group audio', audioArgs.join(' '));
+    else {
+      // 1-1 and group share Zalo's audio config (AEC, noise suppression, the
+      // jitter ceiling). PipeWire 1.4 cannot apply echo level, AECM routing
+      // or comfort noise; callAudioArgs only passes what the plugin honors.
+      const runtime = callAudioArgs(this.params.config);
+      if (runtime.length) {
+        args.push(...runtime);
+        this.log('media: audio config', runtime.join(' '));
+      }
+      if (this.group) {
+        const audioArgs = groupAudioArgs(this.params.config);
+        if (audioArgs.length) {
+          args.push(...audioArgs);
+          this.log('media: group audio', audioArgs.join(' '));
+        }
       }
     }
     this.audio = spawn('python3', args, { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -1390,6 +1400,7 @@ function rtpAudioLevel(rtp) {
 
 // Group encoder flags from the same zrtcConfig macOS reads. Absent keys keep
 // audio-io's defaults. audioBitrate is kbps (fromJson stores it as given).
+// --no-high-pass stays here too: callAudioArgs also sends it for a 1-1 call.
 function groupAudioArgs(config) {
   const c = config && typeof config === 'object' ? config : {};
   const args = [];
@@ -1403,4 +1414,24 @@ function groupAudioArgs(config) {
   return args;
 }
 
-module.exports = { ZrtcMediaBackend, parseHostPort, groupAudioArgs, rtpAudioLevel };
+// What PipeWire's WebRTC plugin actually honors, for a 1-1 call and a group
+// call alike. Echo level, AECM routing and comfort noise have no switch there
+// (desktop AEC, high suppression, fixed). The jitter ceiling is the smaller
+// of maxAudioDelayMs and audioJitterMax, both milliseconds in zrtcConfig.
+function callAudioArgs(config) {
+  const c = config && typeof config === 'object' ? config : {};
+  const args = [];
+  const caps = [];
+  for (const key of ['maxAudioDelayMs', 'audioJitterMax']) {
+    const n = Number(c[key]);
+    if (Number.isFinite(n) && n > 0) caps.push(n);
+  }
+  if (caps.length) args.push('--max-delay', String(Math.trunc(Math.min(...caps))));
+  if (c.audioEchoCancellation === false) args.push('--no-aec');
+  if (c.audioNoiseSuppression === false) args.push('--no-ns');
+  if (c.audioHighPassFilter === false) args.push('--no-high-pass');
+  if (c.audioVoiceDetection === true) args.push('--vad');
+  return args;
+}
+
+module.exports = { ZrtcMediaBackend, parseHostPort, groupAudioArgs, callAudioArgs, rtpAudioLevel };
