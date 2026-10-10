@@ -20,75 +20,54 @@
  * Patch: skip the version check on Linux, keep it intact on other platforms.
  */
 
-const fs = require('fs-extra');
+const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const { patchStrings, findTargetFiles } = require('../utils/patcher');
 
-const PC_DIST = path.join(__dirname, '..', '..', 'app', 'pc-dist');
+const APP_DIR = path.join(__dirname, '..', '..', 'app');
 
-// Hash part of the filenames changes per Zalo version — glob by prefix.
-const GLOB_TARGETS = [
-  path.join(PC_DIST, 'compact-app-pc.*.js'),
-  path.join(PC_DIST, 'search-worker.*.js'),
-  path.join(PC_DIST, 'sync-v2-sub-worker.*.js'),
-  path.join(PC_DIST, 'lazy', 'default-login-main-startup-shared-worker-znotification.*.js'),
+const REPLACEMENTS = [
+  // 1. Skip Darwin kernel check on Linux
+  {
+    from: /let (\w+)=\(\)=>\{\{const (\w+)=\$znode\.os\.release\(\);if\(\2\)\{if\((?:"linux"!==\$znode\.os\.platform\(\)&&)?Number\(\2\.split\("\."\)\[0\]\)<17\)return \1=\(\)=>!1,!1\}\}return \1=\(\)=>!0,\1\(\)\};/g,
+    to: 'let $1=()=>{{const $2=$znode.os.release();if($2){if("linux"!==$znode.os.platform()&&Number($2.split(".")[0])<17)return $1=()=>!1,!1}}return $1=()=>!0,$1()};'
+  },
+  // 2. Static feature defaults have calls disabled (enableCall:!1, enableVideoCall:!1);
+  //    flip the defaults so calls are available out of the box on Linux.
+  {
+    from: /enableCall:!(?:0|1),(enableTag:!0,)enableVideoCall:!(?:0|1)/g,
+    to: 'enableCall:!0,$1enableVideoCall:!0'
+  }
 ];
 
-const ORIGINAL = 'let ae=()=>{{const e=$znode.os.release();if(e){if(Number(e.split(".")[0])<17)return ae=()=>!1,!1}}return ae=()=>!0,ae()};';
-const PATCHED = 'let ae=()=>{{const e=$znode.os.release();if(e){if("linux"!==$znode.os.platform()&&Number(e.split(".")[0])<17)return ae=()=>!1,!1}}return ae=()=>!0,ae()};';
-
-// Static feature defaults have calls disabled (enableCall:!1, enableVideoCall:!1);
-// the server may override them via settings.chat.enable_call, but if it does
-// not send them, flip the defaults so calls are available out of the box.
-const DEFAULTS_ORIGINAL = 'enableCall:!1,enableTag:!0,enableVideoCall:!1';
-const DEFAULTS_PATCHED = 'enableCall:!0,enableTag:!0,enableVideoCall:!0';
-
 async function main() {
-  // if we are on aa64, skip the patch (because the binary is x64 only)
+  // If we are on aa64, skip the patch (because the binary is x64 only)
   if (process.arch === 'arm64' || process.arch === 'aarch64') {
     logger.info('skipping callgate patch on arm64');
     return;
   }
-  let patchedCount = 0;
 
-  for (const pattern of GLOB_TARGETS) {
-    // resolve the first matching file (hashes change per Zalo version)
-    const dir = path.dirname(pattern);
-    const base = path.basename(pattern);
-    const [prefix, suffix] = base.split('*');
-    const file = fs.existsSync(dir)
-      ? (fs.readdirSync(dir).find(f => f.startsWith(prefix) && f.endsWith(suffix || '')) || null)
-      : null;
+  const pcDistDir = path.join(APP_DIR, 'pc-dist');
+  const lazyDir = path.join(pcDistDir, 'lazy');
 
-    if (!file) {
-      logger.warn('callgate target not found: ' + pattern);
-      continue;
-    }
-    const filePath = path.join(dir, file);
-
-    let content = fs.readFileSync(filePath, 'utf8');
-    let changed = false;
-
-    if (!content.includes(PATCHED) && content.includes(ORIGINAL)) {
-      content = content.split(ORIGINAL).join(PATCHED);
-      changed = true;
-    }
-    if (content.includes(DEFAULTS_ORIGINAL)) {
-      content = content.split(DEFAULTS_ORIGINAL).join(DEFAULTS_PATCHED);
-      changed = true;
-    }
-
-    if (!changed) {
-      logger.dim('callgate already patched: ' + file);
-      patchedCount++;
-      continue;
-    }
-    fs.writeFileSync(filePath, content, 'utf8');
-    logger.dim('callgate patched: ' + file);
-    patchedCount++;
+  if (!fs.existsSync(pcDistDir)) {
+    logger.warn('pc-dist directory not found, skipping callgate patch');
+    return;
   }
 
-  if (patchedCount > 0) logger.success(`zcall callgate patched (${patchedCount} files)`);
+  const targetFiles = [
+    ...findTargetFiles(pcDistDir, /^(compact-app-pc|search-worker|sync-v2-sub-worker)\..*\.js$/),
+    ...findTargetFiles(lazyDir, /^default-login-main-startup-shared-worker-znotification\..*\.js$/)
+  ];
+
+  for (const filePath of targetFiles) {
+    patchStrings(filePath, REPLACEMENTS, `callgate: ${path.basename(filePath)}`);
+  }
+
+  if (targetFiles.length > 0) {
+    logger.success(`zcall callgate patched (${targetFiles.length} files)`);
+  }
 }
 
 if (require.main === module) {

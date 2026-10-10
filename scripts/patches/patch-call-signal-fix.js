@@ -1,18 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-
-let logger;
-try {
-  logger = require('../utils/logger');
-} catch (_) {
-  logger = {
-    info: (...args) => console.log('[INFO]', ...args),
-    warn: (...args) => console.warn('[WARN]', ...args),
-    error: (...args) => console.error('[ERROR]', ...args),
-    success: (...args) => console.log('[SUCCESS]', ...args),
-    dim: (...args) => console.log(' ', ...args)
-  };
-}
+const logger = require('../utils/logger');
+const { patchStrings, findTargetFiles } = require('../utils/patcher');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
 
@@ -22,6 +11,31 @@ const APP_DIR = path.join(__dirname, '..', '..', 'app');
  * caused by Signal 401 (requestCall) and call signaling being held inside requestQueue
  * without ever being dequeued on Linux.
  */
+const REPLACEMENTS = [
+  // 1. Disable using_queue in call config defaults
+  {
+    from: /using_queue:1/g,
+    to: 'using_queue:0'
+  },
+  // 2. Bypass using_queue branch in call signal dispatcher
+  {
+    from: /if\((\w+)\)if\((\w+\.default\.call\.using_queue)\)/g,
+    to: 'if($1)if(!1&&$2)'
+  },
+  // 3. Initialize call queue state variable to "idle" (instead of undefined)
+  {
+    from: /([A-Za-z0-9_$]+)="idle"[^;]*;function ([A-Za-z0-9_$]+)\(e=\{\}\)\{const\{limit:\w+=1\/0,maxTimeout:\w+=\w+\}=e,\w+=\[\];let ([A-Za-z0-9_$]+);const ([A-Za-z0-9_$]+)=[a-zA-Z0-9_$]+=>\{\3=[a-zA-Z0-9_$]+\}/g,
+    to: (match, idleVar, _func, stateVar) => {
+      return match.replace(`let ${stateVar};`, `let ${stateVar}=${idleVar};`);
+    }
+  },
+  // 4. Force immediate dequeue when requestQueue is instantiated
+  {
+    from: /this\.requestQueue=([A-Za-z0-9_$]+)\(\),this\.retryQueue=\[\]/g,
+    to: 'this.requestQueue=$1(),this.requestQueue.dequeue(),this.retryQueue=[]'
+  }
+];
+
 async function main() {
   const pcDistDir = path.join(APP_DIR, 'pc-dist');
   const lazyDir = path.join(pcDistDir, 'lazy');
@@ -31,110 +45,18 @@ async function main() {
     return;
   }
 
-  function escapeRegex(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const targetFiles = [
+    ...findTargetFiles(pcDistDir, /^(compact-app-pc|search-worker|sync-v2-sub-worker)\..*\.js$/),
+    ...findTargetFiles(lazyDir, /^default-login-main-startup-shared-worker-znotification\..*\.js$/)
+  ];
+
+  for (const filePath of targetFiles) {
+    patchStrings(filePath, REPLACEMENTS, `call signal queue: ${path.basename(filePath)}`);
   }
 
-  function patchFile(filePath, replacements) {
-    if (!fs.existsSync(filePath)) {
-      logger.warn(`File not found: ${filePath}`);
-      return false;
-    }
-
-    let content = fs.readFileSync(filePath, 'utf8');
-    let changed = false;
-
-    for (const [from, to] of replacements) {
-      if (content.includes(from)) {
-        content = content.replace(typeof from === 'string' ? new RegExp(escapeRegex(from), 'g') : from, to);
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      fs.writeFileSync(filePath, content, 'utf8');
-      logger.dim(`Patched call signal queue in ${path.basename(filePath)}`);
-      return true;
-    }
-    return false;
+  if (targetFiles.length > 0) {
+    logger.success(`Call signal queue deadlock patches applied (${targetFiles.length} files)`);
   }
-
-  function findFiles(dir, pattern) {
-    if (!fs.existsSync(dir)) return [];
-    return fs.readdirSync(dir)
-      .filter(f => pattern.test(f))
-      .map(f => path.join(dir, f));
-  }
-
-  // 1. compact-app-pc bundle
-  const compactFiles = findFiles(pcDistDir, /^compact-app-pc\..*\.js$/);
-  for (const f of compactFiles) {
-    patchFile(f, [
-      ['using_queue:1', 'using_queue:0'],
-      ['if(a)if(A.default.call.using_queue)', 'if(a)if(!1&&A.default.call.using_queue)'],
-      [
-        'function P(e={}){const{limit:t=1/0,maxTimeout:n=L}=e,a=[];let i;const r=e=>{i=e}',
-        'function P(e={}){const{limit:t=1/0,maxTimeout:n=L}=e,a=[];let i=w;const r=e=>{i=e}'
-      ],
-      [
-        'this.requestQueue=P(),this.retryQueue=[]',
-        'this.requestQueue=P(),this.requestQueue.dequeue(),this.retryQueue=[]'
-      ]
-    ]);
-  }
-
-  // 2. default-login bundle in lazy/
-  const defaultLoginFiles = findFiles(lazyDir, /^default-login-main-startup-shared-worker-znotification\..*\.js$/);
-  for (const f of defaultLoginFiles) {
-    patchFile(f, [
-      ['using_queue:1', 'using_queue:0'],
-      ['if(a)if(A.default.call.using_queue)', 'if(a)if(!1&&A.default.call.using_queue)'],
-      [
-        'function L(e={}){const{limit:t=1/0,maxTimeout:n=P}=e,a=[];let s;const i=e=>{s=e}',
-        'function L(e={}){const{limit:t=1/0,maxTimeout:n=P}=e,a=[];let s=D;const i=e=>{s=e}'
-      ],
-      [
-        'this.requestQueue=L(),this.retryQueue=[]',
-        'this.requestQueue=L(),this.requestQueue.dequeue(),this.retryQueue=[]'
-      ]
-    ]);
-  }
-
-  // 3. search-worker bundle
-  const searchWorkerFiles = findFiles(pcDistDir, /^search-worker\..*\.js$/);
-  for (const f of searchWorkerFiles) {
-    patchFile(f, [
-      ['using_queue:1', 'using_queue:0'],
-      ['if(a)if(A.default.call.using_queue)', 'if(a)if(!1&&A.default.call.using_queue)'],
-      [
-        'function L(e={}){const{limit:t=1/0,maxTimeout:n=P}=e,a=[];let i;const s=e=>{i=e}',
-        'function L(e={}){const{limit:t=1/0,maxTimeout:n=P}=e,a=[];let i=w;const s=e=>{i=e}'
-      ],
-      [
-        'this.requestQueue=L(),this.retryQueue=[]',
-        'this.requestQueue=L(),this.requestQueue.dequeue(),this.retryQueue=[]'
-      ]
-    ]);
-  }
-
-  // 4. sync-v2-sub-worker bundle
-  const syncWorkerFiles = findFiles(pcDistDir, /^sync-v2-sub-worker\..*\.js$/);
-  for (const f of syncWorkerFiles) {
-    patchFile(f, [
-      ['using_queue:1', 'using_queue:0'],
-      ['if(a)if(A.default.call.using_queue)', 'if(a)if(!1&&A.default.call.using_queue)'],
-      [
-        'function L(e={}){const{limit:t=1/0,maxTimeout:n=P}=e,a=[];let i;const s=e=>{i=e}',
-        'function L(e={}){const{limit:t=1/0,maxTimeout:n=P}=e,a=[];let i=w;const s=e=>{i=e}'
-      ],
-      [
-        'this.requestQueue=L(),this.retryQueue=[]',
-        'this.requestQueue=L(),this.requestQueue.dequeue(),this.retryQueue=[]'
-      ]
-    ]);
-  }
-
-  logger.success('Call signal queue deadlock patches applied');
 }
 
 if (require.main === module) {

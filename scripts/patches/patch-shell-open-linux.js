@@ -1,44 +1,18 @@
 const fs = require('fs-extra');
 const path = require('path');
 const logger = require('../utils/logger');
+const { patchStrings } = require('../utils/patcher');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
 const MAIN_DIR = path.join(APP_DIR, 'main-dist');
-const LINUX_DIRECTORY_GUARD_PATTERN =
-  /if\("linux"===process\.platform&&([A-Za-z_$][\w$]*)\.isDirectory\(\)\)return [A-Za-z_$][\w$]*\(e\)/;
 
-function patchShellOpenLinux(content) {
-  const shellModuleStart = content.indexOf('Mz8P:function');
-  if (shellModuleStart === -1) {
-    throw new Error('Shell module not found.');
+const REPLACEMENTS = [
+  // Linux folder opening: when path is a directory, use shell.openPath() instead of macOS/Windows logic
+  {
+    from: /(function (\w+)\(e\)\{return \w+\.shell\.openPath\(e\)\}[\s\S]*?if\((\w+)\)\{)(?:if\("linux"===process\.platform&&\3\.isDirectory\(\)\)return \2\(e\);)?if\(!\3\.isDirectory\(\)\)\{/,
+    to: '$1if("linux"===process.platform&&$3.isDirectory())return $2(e);if(!$3.isDirectory()){'
   }
-
-  const shellModule = content.slice(shellModuleStart);
-  if (LINUX_DIRECTORY_GUARD_PATTERN.test(shellModule)) return content;
-
-  const openPathMatch = shellModule.match(
-    /function ([A-Za-z_$][\w$]*)\(e\)\{return [A-Za-z_$][\w$]*\.shell\.openPath\(e\)\}/
-  );
-  if (!openPathMatch) {
-    throw new Error('Electron shell.openPath helper not found.');
-  }
-  const openPath = openPathMatch[1];
-
-  const directoryBranchPattern =
-    /if\(([A-Za-z_$][\w$]*)\)\{if\(!\1\.isDirectory\(\)\)\{/;
-  const directoryBranchMatch = shellModule.match(directoryBranchPattern);
-  if (!directoryBranchMatch) {
-    throw new Error('Shell directory branch not found.');
-  }
-  const stat = directoryBranchMatch[1];
-
-  const patchedShellModule = shellModule.replace(
-    directoryBranchPattern,
-    `if(${stat}){if("linux"===process.platform&&${stat}.isDirectory())return ${openPath}(e);` +
-      `if(!${stat}.isDirectory()){`
-  );
-  return content.slice(0, shellModuleStart) + patchedShellModule;
-}
+];
 
 async function main() {
   logger.info('Patching Linux folder opening...');
@@ -58,19 +32,12 @@ async function main() {
     throw new Error('No shell bundles found.');
   }
 
-  let updatedCount = 0;
   for (const filePath of bundlePaths) {
-    const original = fs.readFileSync(filePath, 'utf8');
-    const patched = patchShellOpenLinux(original);
-    if (patched !== original) {
-      fs.writeFileSync(filePath, patched, 'utf8');
-      updatedCount += 1;
-      logger.dim(`Patched Linux folder opening in ${path.relative(APP_DIR, filePath)}`);
-    }
+    patchStrings(filePath, REPLACEMENTS, `Linux folder opening in ${path.relative(APP_DIR, filePath)}`);
   }
 
   logger.success(
-    `Linux folder-opening patch applied (${bundlePaths.length} checked, ${updatedCount} updated)`
+    `Linux folder-opening patch applied (${bundlePaths.length} checked)`
   );
 }
 
@@ -82,6 +49,5 @@ if (require.main === module) {
 }
 
 module.exports = {
-  main,
-  patchShellOpenLinux
+  main
 };

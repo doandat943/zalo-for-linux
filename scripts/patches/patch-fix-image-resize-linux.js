@@ -4,6 +4,10 @@ const logger = require('../utils/logger');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
 
+/**
+ * @deprecated Superseded by the native Rust zimage module (PR #47, nativelibs/zimage).
+ * Kept for historical reference.
+ */
 // Zalo's native photo-resize library ("zimage", app/native/nativelibs/zimage)
 // only ships prebuilt binaries for darwin_arm64/darwin_x64 (and a win32
 // build). Its platform-detection code never assigns a Linux target, so on

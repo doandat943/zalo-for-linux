@@ -278,6 +278,7 @@ async function extractAppAsar() {
   const { main: patchZcallCallv2 } = require('./patches/patch-zcall-callv2');
   await patchZcallCallv2();
 
+  // [DEPRECATED] Superseded by native Rust zimage module (nativelibs/zimage)
   // const { main: patchFixImageResizeLinux } = require('./patches/patch-fix-image-resize-linux');
   // await patchFixImageResizeLinux();
 
@@ -314,8 +315,8 @@ async function extractAppAsar() {
   const { main: patchZocrRuntime } = require('./patches/patch-zocr-runtime');
   await patchZocrRuntime();
 
-  const { main: patchflatpakFileTransfer } = require('./patches/patch-flatpak-file-transfer');
-  await patchflatpakFileTransfer();
+  const { main: patchFlatpakFileTransfer } = require('./patches/patch-flatpak-file-transfer');
+  await patchFlatpakFileTransfer();
 }
 
 function commandExists(command) {

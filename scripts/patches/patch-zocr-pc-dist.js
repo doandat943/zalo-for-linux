@@ -36,20 +36,28 @@ function patch(source) {
     const textLayer = resets[0][1];
     const target = downs[0][1];
     const replacements = [
-      [resets[0][0],
-        gestureMarker + `const ocrGestureClick=e=>{const t=ocrGestureStarted;ocrGestureStarted=!1;t&&${textLayer}.current&&!${textLayer}.current.contains(e.target)&&(e.preventDefault(),e.stopPropagation())},` + resets[0][0].slice('const '.length)],
-      [downs[0][0],
-        downs[0][0] + `ocrGestureStarted=0===e.button&&Boolean(${target}&&${target}.contains(e.target));`],
-      ['return c.addEventListener("mousedown",A,!0),',
-        'return c.addEventListener("click",ocrGestureClick,!0),c.addEventListener("mousedown",A,!0),'],
-      ['c.removeEventListener("mousedown",A,!0),',
-        'c.removeEventListener("click",ocrGestureClick,!0),c.removeEventListener("mousedown",A,!0),'],
-    ];
-    for (const [original, replacement] of replacements) {
-      if (module.split(original).length !== 2) {
-        throw new Error(`OCR selection pattern changed: ${original}`);
+      {
+        from: resets[0][0],
+        to: gestureMarker + `const ocrGestureClick=e=>{const t=ocrGestureStarted;ocrGestureStarted=!1;t&&${textLayer}.current&&!${textLayer}.current.contains(e.target)&&(e.preventDefault(),e.stopPropagation())},` + resets[0][0].slice('const '.length)
+      },
+      {
+        from: downs[0][0],
+        to: downs[0][0] + `ocrGestureStarted=0===e.button&&Boolean(${target}&&${target}.contains(e.target));`
+      },
+      {
+        from: 'return c.addEventListener("mousedown",A,!0),',
+        to: 'return c.addEventListener("click",ocrGestureClick,!0),c.addEventListener("mousedown",A,!0),'
+      },
+      {
+        from: 'c.removeEventListener("mousedown",A,!0),',
+        to: 'c.removeEventListener("click",ocrGestureClick,!0),c.removeEventListener("mousedown",A,!0),'
       }
-      module = module.replace(original, replacement);
+    ];
+    for (const { from, to } of replacements) {
+      if (module.split(from).length !== 2) {
+        throw new Error(`OCR selection pattern changed: ${from}`);
+      }
+      module = module.replace(from, to);
     }
   }
   // Releasing a drag outside OCR must not collapse the last valid selection.
@@ -65,7 +73,7 @@ function patch(source) {
   return source.slice(0, start) + module + source.slice(end);
 }
 
-function main() {
+async function main() {
   logger.info('Patching OCR UI...');
   const root = path.join(APP_DIR, 'pc-dist');
   const changes = [];

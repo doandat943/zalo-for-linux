@@ -4,6 +4,10 @@ const logger = require('../utils/logger');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
 
+/**
+ * @deprecated Superseded by the native Rust zimage module (PR #47, nativelibs/zimage).
+ * Kept for historical reference.
+ */
 // The renderer's photo-resize entry point (offloads to the native "zimage"
 // resize task, see patch-fix-image-resize-linux.js for why that fails on
 // Linux) is called with either a filesystem path (drag-drop of a real file)

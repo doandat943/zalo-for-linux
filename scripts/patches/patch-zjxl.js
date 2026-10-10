@@ -1,60 +1,24 @@
-const { execSync } = require('child_process');
-const fs = require('fs-extra');
 const path = require('path');
-const logger = require('../utils/logger');
+const { integrateNativeLib } = require('../utils/nativelib');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
-const NATIVELIBS_DIR = path.join(__dirname, '..', '..', 'nativelibs');
-const BUILDER_SCRIPT = path.join(NATIVELIBS_DIR, 'builder-rust.js');
-const ZJXL_DIR = path.join(NATIVELIBS_DIR, 'zjxl');
+
+const REPLACEMENTS = [
+  // Load Linux binary for zjxl
+  {
+    from: `} else {\n    return { error: 'not support' };\n  }`,
+    to: `} else if (process.platform === 'linux') {\n    nodeAddon = require('./build/linux/zjxl.node');\n  } else {\n    return { error: 'not support' };\n  }`
+  }
+];
 
 async function main() {
-  logger.info('Building zjxl from source...');
-
-  if (!fs.existsSync(path.join(ZJXL_DIR, 'Cargo.toml'))) {
-    logger.warn('zjxl not found, skipping');
-    return;
-  }
-
-  try {
-    execSync(`node "${BUILDER_SCRIPT}" "${ZJXL_DIR}"`, {
-      cwd: path.join(__dirname, '..', '..'),
-      stdio: 'pipe'
-    });
-  } catch (error) {
-    logger.error('Failed to build zjxl', error.message);
-    if (error.stdout) logger.dim(error.stdout.toString());
-    throw new Error(`Failed to build zjxl`);
-  }
-
-  const releaseDir = path.join(ZJXL_DIR, 'target', 'release');
-  const nodeFiles = fs.readdirSync(releaseDir).filter(f => f.endsWith('.node'));
-
-  const destDir = path.join(APP_DIR, 'native', 'nativelibs', 'zjxl', 'build', 'linux');
-  fs.ensureDirSync(destDir);
-
-  for (const file of nodeFiles) {
-    fs.copyFileSync(
-      path.join(releaseDir, file),
-      path.join(destDir, file)
-    );
-  }
-
-  const indexJsPath = path.join(APP_DIR, 'native', 'nativelibs', 'zjxl', 'index.js');
-  if (fs.existsSync(indexJsPath)) {
-    let content = fs.readFileSync(indexJsPath, 'utf8');
-
-    if (!content.includes("process.platform === 'linux'")) {
-      content = content.replace(
-        `} else {\n    return { error: 'not support' };\n  }`,
-        `} else if (process.platform === 'linux') {\n    nodeAddon = require('./build/linux/zjxl.node');\n  } else {\n    return { error: 'not support' };\n  }`
-      );
-      fs.writeFileSync(indexJsPath, content, 'utf8');
-      logger.dim('Patched index.js for Linux support');
-    }
-  }
-
-  logger.success('zjxl built and installed');
+  integrateNativeLib({
+    name: 'zjxl',
+    type: 'rust',
+    destDir: path.join(APP_DIR, 'native', 'nativelibs', 'zjxl', 'build', 'linux'),
+    loaderFile: path.join(APP_DIR, 'native', 'nativelibs', 'zjxl', 'index.js'),
+    loaderReplacements: REPLACEMENTS
+  });
 }
 
 if (require.main === module) {

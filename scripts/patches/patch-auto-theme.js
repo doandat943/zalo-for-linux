@@ -1,23 +1,10 @@
-const fs = require('fs');
 const path = require('path');
-
-let logger;
-try {
-  logger = require('../utils/logger');
-} catch (_) {
-  logger = {
-    info: (...args) => console.log('[INFO]', ...args),
-    warn: (...args) => console.warn('[WARN]', ...args),
-    error: (...args) => console.error('[ERROR]', ...args),
-    success: (...args) => console.log('[SUCCESS]', ...args),
-    dim: (...args) => console.log(' ', ...args)
-  };
-}
+const logger = require('../utils/logger');
+const { patchBlock } = require('../utils/patcher');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
 
 const THEME_MAIN_INJECTION = `
-// --- Zalo Linux Auto Dark/Light Theme Sync ---
 (function(){
   // Injected into the main-window factory: guard against re-runs when the
   // main window is recreated (duplicate handle() throws, duplicate monitors).
@@ -88,11 +75,7 @@ const THEME_MAIN_INJECTION = `
 })();
 `;
 
-// Every version of the main.js injection above (closing `})();` at column 0).
-const THEME_MAIN_BLOCK_RE = /\/\/ --- Zalo Linux Auto Dark\/Light Theme Sync ---\n\(function\(\)\{[\s\S]*?\n\}\)\(\);\n?/;
-
 const THEME_PRELOAD_INJECTION = `
-// --- Zalo Linux Auto Dark/Light Theme Sync ---
 (function() {
   if (process.platform !== "linux") return;
   const { ipcRenderer } = require("electron");
@@ -137,37 +120,19 @@ async function main() {
 
   // 1. Patch main-dist/main.js
   const mainJsPath = path.join(mainDistDir, 'main.js');
-  if (fs.existsSync(mainJsPath)) {
-    let content = fs.readFileSync(mainJsPath, 'utf8');
-    const block = THEME_MAIN_INJECTION.replace(/^\n/, '');
-    if (THEME_MAIN_BLOCK_RE.test(content)) {
-      const updated = content.replace(THEME_MAIN_BLOCK_RE, () => block);
-      if (updated !== content) {
-        fs.writeFileSync(mainJsPath, updated, 'utf8');
-        logger.dim('Updated auto theme watcher in main.js');
-      }
-    } else if (!content.includes('zalo-linux-theme-change')) {
-      const anchor = 'Ae=m.createWithMultiWindow(i,o,gn,oe(),t),g(Ae),v(Ae.webContents),et.setMainWindow(Ae)';
-      if (content.includes(anchor)) {
-        content = content.replace(anchor, `${anchor};\n${THEME_MAIN_INJECTION}\n`);
-      } else {
-        content += '\n' + THEME_MAIN_INJECTION + '\n';
-      }
-      fs.writeFileSync(mainJsPath, content, 'utf8');
-      logger.dim('Injected auto theme watcher into main.js');
-    }
-  }
+  patchBlock(mainJsPath, {
+    name: 'Auto Theme Watcher',
+    block: THEME_MAIN_INJECTION,
+    anchor: 'Ae=m.createWithMultiWindow(i,o,gn,oe(),t),g(Ae),v(Ae.webContents),et.setMainWindow(Ae)'
+  });
 
   // 2. Patch main-dist/preload-render.js
   const preloadJsPath = path.join(mainDistDir, 'preload-render.js');
-  if (fs.existsSync(preloadJsPath)) {
-    let content = fs.readFileSync(preloadJsPath, 'utf8');
-    if (!content.includes('zalo-linux-theme-change')) {
-      content = content.trimEnd() + '\n' + THEME_PRELOAD_INJECTION + '\n';
-      fs.writeFileSync(preloadJsPath, content, 'utf8');
-      logger.dim('Injected auto theme sync into preload-render.js');
-    }
-  }
+  patchBlock(preloadJsPath, {
+    name: 'Auto Theme Sync',
+    block: THEME_PRELOAD_INJECTION,
+    position: 'append'
+  });
 
   logger.success('Auto Dark/Light theme patch applied');
 }

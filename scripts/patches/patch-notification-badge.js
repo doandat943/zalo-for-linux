@@ -1,37 +1,10 @@
-const fs = require('fs-extra');
 const path = require('path');
 const logger = require('../utils/logger');
+const { patchBlock } = require('../utils/patcher');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
-const PATCH_START = '// ZALO LINUX MAIN BADGE IPC START';
-const PATCH_END = '// ZALO LINUX MAIN BADGE IPC END';
 
-async function main() {
-  const mainPath = path.join(APP_DIR, 'main-dist', 'main.js');
-
-  if (!fs.existsSync(mainPath)) {
-    logger.warn('main-dist/main.js not present, skipping main badge patch');
-    return;
-  }
-
-  let content = fs.readFileSync(mainPath, 'utf8');
-  const mainScript = getMainBadgeScript();
-
-  if (content.includes(PATCH_START) && content.includes(PATCH_END)) {
-    const start = content.indexOf(PATCH_START);
-    const end = content.indexOf(PATCH_END, start) + PATCH_END.length;
-    content = mainScript + content.slice(end).replace(/^\r?\n/, '');
-    fs.writeFileSync(mainPath, content, 'utf8');
-    logger.dim('Updated main.js: Unity Launcher badge IPC module');
-    return;
-  }
-  content = mainScript + content;
-  fs.writeFileSync(mainPath, content, 'utf8');
-  logger.dim('Patched main.js: Unity Launcher badge IPC module');
-}
-
-function getMainBadgeScript() {
-  return `${PATCH_START}
+const BADGE_SCRIPT = `
 try {
   const { app, ipcMain } = require('electron');
   const { execFile } = require('child_process');
@@ -138,6 +111,7 @@ try {
 
     publishUnityBadge(count);
   }
+
   const initBadgeModule = () => {
     if (process.platform !== 'linux') return;
 
@@ -172,8 +146,15 @@ try {
 } catch (err) {
   console.error('Failed to apply Zalo Linux Badge Patch:', err);
 }
-${PATCH_END}
 `;
+
+async function main() {
+  const mainPath = path.join(APP_DIR, 'main-dist', 'main.js');
+  patchBlock(mainPath, {
+    name: 'Unity Launcher Badge',
+    block: BADGE_SCRIPT,
+    position: 'prepend'
+  });
 }
 
 if (require.main === module) {

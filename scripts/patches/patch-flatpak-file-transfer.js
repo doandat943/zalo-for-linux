@@ -1,10 +1,9 @@
 const fs = require('fs-extra');
 const path = require('path');
 const logger = require('../utils/logger');
+const { patchBlock } = require('../utils/patcher');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
-const START = '// --- Zalo Linux Flatpak File Transfer ---';
-const END = '// --- End Zalo Linux Flatpak File Transfer ---';
 
 // gdbus prints a GVariant (as,) tuple. Parse only this type, never eval output.
 function parsePortalFiles(output) {
@@ -406,34 +405,20 @@ function installRenderer() {
   window.addEventListener('drop', receive, true);
 }
 
-function inject(content, source) {
-  const block = `${START}\n${source}\n${END}\n`;
-  const start = content.indexOf(START);
-  if (start === -1) return block + content;
-  const end = content.indexOf(END, start);
-  if (end === -1) throw new Error('Flatpak file-transfer patch end marker not found');
-  return content.slice(0, start) + block + content.slice(end + END.length).replace(/^\r?\n/, '');
-}
-
-function patchFlatpakFileTransfer(content, preload = false) {
-  return inject(content, preload ? `(${installPreload.toString()})(${installRenderer.toString()});` : `(${installMain.toString()})(${parsePortalFiles.toString()}, ${readDragKey.toString()});`);
-}
-
 async function main() {
   logger.info('Patching Flatpak file transfers...');
-  let updated = 0;
   for (const [name, preload] of [['main.js', false], ['compact-app.js', false], ['preload-render.js', true], ['compact-app-preload.js', true]]) {
     const filePath = path.join(APP_DIR, 'main-dist', name);
-    if (!fs.existsSync(filePath)) logger.warn(`File-transfer bundle not found: ${name}`);
-    const original = fs.readFileSync(filePath, 'utf8');
-    const patched = patchFlatpakFileTransfer(original, preload);
-    if (patched !== original) {
-      fs.writeFileSync(filePath, patched, 'utf8');
-      logger.dim(`Patched Flatpak file transfer in ${name}`);
-      updated++;
-    }
+    const source = preload
+      ? `(${installPreload.toString()})(${installRenderer.toString()});`
+      : `(${installMain.toString()})(${parsePortalFiles.toString()}, ${readDragKey.toString()});`;
+    patchBlock(filePath, {
+      name: 'Flatpak File Transfer',
+      block: source,
+      position: 'prepend'
+    });
   }
-  logger.success(`Flatpak file-transfer patch applied (${updated} updated)`);
+  logger.success('Flatpak file-transfer patch applied');
 }
 
 if (require.main === module) {

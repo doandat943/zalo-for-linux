@@ -1,55 +1,39 @@
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const { patchStrings, findTargetFiles } = require('../utils/patcher');
 
-const PC_DIST_DIR = path.join(__dirname, '..', '..', 'app', 'pc-dist');
+const APP_DIR = path.join(__dirname, '..', '..', 'app');
 
-function patchDiskSpace(content) {
-  if (!content.includes('analyzeMainDisk(){')) return content;
-
-  const start = content.indexOf('"7r+T":function');
-  const method = content.indexOf('analyzeMainDisk(){', start);
-  if (start === -1 || method === -1) {
-    throw new Error('Disk checker module not found.');
+const REPLACEMENTS = [
+  // Measure Zalo data directory (~/.config/ZaloData); immutable distros can report 0 bytes free on /
+  {
+    from: /("7r\+T":function[\s\S]*?([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\("IpzU"\)[\s\S]*?analyzeMainDisk\(\)\{)let e="";e="\/";/,
+    to: '$1let e=Object($2.getZaloDirSync)();'
   }
-  const imports = content.slice(start, method);
-  const pathModule = imports.match(/([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\("IpzU"\)/);
-  if (!pathModule) throw new Error('Disk checker path module import not found.');
-
-  // Measure Zalo's data filesystem; immutable / can correctly report zero free bytes.
-  const replacement = `analyzeMainDisk(){let e=Object(${pathModule[1]}.getZaloDirSync)();`;
-  const remainder = content.slice(method);
-  if (remainder.startsWith(replacement)) return content;
-  const rootPath = /^analyzeMainDisk\(\)\{let e="";e="\/";/;
-  if (!rootPath.test(remainder)) throw new Error('Disk checker root path anchor not found.');
-  return content.slice(0, method) + remainder.replace(rootPath, replacement);
-}
-
-function findBundles(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const file = path.join(directory, entry.name);
-    return entry.isDirectory() ? findBundles(file) :
-      entry.isFile() && entry.name.endsWith('.js') ? [file] : [];
-  });
-}
+];
 
 async function main() {
-  logger.info('Patching disk space checks to use the Zalo data directory...');
-  const bundles = findBundles(PC_DIST_DIR)
-    .map((file) => ({ file, original: fs.readFileSync(file, 'utf8') }))
-    .filter(({ original }) => original.includes('analyzeMainDisk(){'));
-  if (!bundles.length) throw new Error('No disk checker bundles found.');
+  const pcDistDir = path.join(APP_DIR, 'pc-dist');
+  const lazyDir = path.join(pcDistDir, 'lazy');
 
-  // Validate every bundle before writing, so upstream changes cannot leave a partial patch.
-  const patches = bundles.map(({ file, original }) => ({ file, original, patched: patchDiskSpace(original) }));
-  let updated = 0;
-  for (const { file, original, patched } of patches) {
-    if (original === patched) continue;
-    fs.writeFileSync(file, patched);
-    updated += 1;
-    logger.dim(`Patched ${path.relative(PC_DIST_DIR, file)}`);
+  if (!fs.existsSync(pcDistDir)) {
+    logger.warn('pc-dist directory not found, skipping disk space patch');
+    return;
   }
-  logger.success(`Disk space patch applied (${bundles.length} checked, ${updated} updated)`);
+
+  const targetFiles = [
+    ...findTargetFiles(pcDistDir, /^(compact-app-pc|search-worker|sync-v2-sub-worker)\..*\.js$/),
+    ...findTargetFiles(lazyDir, /^default-login-main-startup-shared-worker-znotification\..*\.js$/)
+  ];
+
+  for (const filePath of targetFiles) {
+    patchStrings(filePath, REPLACEMENTS, `disk space check: ${path.basename(filePath)}`);
+  }
+
+  if (targetFiles.length > 0) {
+    logger.success(`Disk space patch applied (${targetFiles.length} files)`);
+  }
 }
 
 if (require.main === module) {
@@ -59,4 +43,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, patchDiskSpace };
+module.exports = { main };

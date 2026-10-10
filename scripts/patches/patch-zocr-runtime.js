@@ -72,19 +72,37 @@ function extractKey(data) {
 
 function patch(source) {
   const replacements = [
-    ['Ce=["zocr-host.exe"', 'Ce=process.platform==="linux"?["zocr-host","libonnxruntime.so","zocr/models.zmdl","seed_key","text_digest_key"]:["zocr-host.exe"'],
-    ['join)(e,"zocr-host.exe")', 'join)(e,process.platform==="linux"?"zocr-host":"zocr-host.exe")'],
-    ['function We(e,r){return e?', 'function We(e,r){if(process.platform==="linux")return(0,$.join)(__dirname,"../../ocr");return e?'],
-    ['switch(K){case"win32":', 'switch(K){case"linux":if(G!=="x64"&&G!=="arm64")k=new Error(`Unsupported architecture on Linux: ${G}`);break;case"win32":'],
-    ['function Ie(){return K===', 'function Ie(){if(K==="linux")return G==="x64"||G==="arm64"?null:"unsupported-platform";return K==='],
-    ['if(K==="win32"){let{engine:', 'if(K==="win32"||K==="linux"){let{engine:'],
-  ];
-  for (const [original, replacement] of replacements) {
-    if (source.split(replacement).length === 2) continue;
-    if (source.split(original).length !== 2) {
-      throw new Error(`loader does not match expected source: ${original}`);
+    {
+      from: 'Ce=["zocr-host.exe"',
+      to: 'Ce=process.platform==="linux"?["zocr-host","libonnxruntime.so","zocr/models.zmdl","seed_key","text_digest_key"]:["zocr-host.exe"'
+    },
+    {
+      from: 'join)(e,"zocr-host.exe")',
+      to: 'join)(e,process.platform==="linux"?"zocr-host":"zocr-host.exe")'
+    },
+    {
+      from: 'function We(e,r){return e?',
+      to: 'function We(e,r){if(process.platform==="linux")return(0,$.join)(__dirname,"../../ocr");return e?'
+    },
+    {
+      from: 'switch(K){case"win32":',
+      to: 'switch(K){case"linux":if(G!=="x64"&&G!=="arm64")k=new Error(`Unsupported architecture on Linux: ${G}`);break;case"win32":'
+    },
+    {
+      from: 'function Ie(){return K===',
+      to: 'function Ie(){if(K==="linux")return G==="x64"||G==="arm64"?null:"unsupported-platform";return K==='
+    },
+    {
+      from: 'if(K==="win32"){let{engine:',
+      to: 'if(K==="win32"||K==="linux"){let{engine:'
     }
-    source = source.replace(original, replacement);
+  ];
+  for (const { from, to } of replacements) {
+    if (source.split(to).length === 2) continue;
+    if (source.split(from).length !== 2) {
+      throw new Error(`loader does not match expected source: ${from}`);
+    }
+    source = source.replace(from, to);
   }
   return source;
 }
@@ -159,7 +177,7 @@ function installOnnxRuntime() {
   logger.success('libonnxruntime.so installed');
 }
 
-function main() {
+async function main() {
   if (!build()) return;
   installOnnxRuntime();
   

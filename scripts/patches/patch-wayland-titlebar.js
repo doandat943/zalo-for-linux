@@ -1,17 +1,13 @@
-const fs = require('fs-extra');
 const path = require('path');
 const logger = require('../utils/logger');
+const { patchBlock } = require('../utils/patcher');
 
 const APP_DIR = path.join(__dirname, '..', '..', 'app');
-
-const PATCH_START = '// ZALO LINUX WAYLAND TITLEBAR START';
-const PATCH_END = '// ZALO LINUX WAYLAND TITLEBAR END';
 
 // Minimize / maximize / close buttons for Zalo's own title bar on native
 // Wayland, where the window has no frame (see plugins/wayland-titlebar).
 // They only appear when the main process says the session is native Wayland.
-function getPreloadScript() {
-  return `${PATCH_START}
+const TITLEBAR_SCRIPT = `
 (function () {
   if (process.platform !== 'linux') return;
   const { ipcRenderer } = require('electron');
@@ -73,32 +69,15 @@ function getPreloadScript() {
     inject();
   }
 })();
-${PATCH_END}`;
-}
+`;
 
 async function main() {
   const preloadPath = path.join(APP_DIR, 'main-dist', 'preload-render.js');
-
-  if (!fs.existsSync(preloadPath)) {
-    logger.warn('preload-render.js not present, skipping Wayland titlebar patch');
-    return;
-  }
-
-  let content = fs.readFileSync(preloadPath, 'utf8');
-  const script = getPreloadScript();
-
-  if (content.includes(PATCH_START) && content.includes(PATCH_END)) {
-    const start = content.indexOf(PATCH_START);
-    const end = content.indexOf(PATCH_END, start) + PATCH_END.length;
-    content = content.slice(0, start) + script + content.slice(end);
-    fs.writeFileSync(preloadPath, content, 'utf8');
-    logger.dim('Updated preload-render.js: Wayland window controls');
-    return;
-  }
-
-  content = content.trimEnd() + '\n' + script + '\n';
-  fs.writeFileSync(preloadPath, content, 'utf8');
-  logger.dim('Patched preload-render.js: Wayland window controls');
+  patchBlock(preloadPath, {
+    name: 'Wayland Titlebar Controls',
+    block: TITLEBAR_SCRIPT,
+    position: 'append'
+  });
 }
 
 if (require.main === module) {
